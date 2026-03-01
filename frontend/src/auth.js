@@ -34,14 +34,41 @@ export const login = async (username, password) => {
     return data;
 };
 
+// ─── التحقق من انتهاء صلاحية التوكن محلياً (بدون اتصال بالسيرفر) ──────────────
+const isTokenExpiredLocally = () => {
+    const token = getToken();
+    if (!token) return true;
+    try {
+        // فكّ الـ Payload بدون التحقق من التوقيع (نستخدمه للوقت فقط)
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (!payload.exp) return false;
+        // اعتبره منتهياً فقط إذا تجاوز وقته الحقيقي بـ 60 ثانية احتياطاً
+        return Date.now() / 1000 > payload.exp + 60;
+    } catch {
+        return false; // في حال الخطأ نفترض أنه صالح
+    }
+};
+
 // ─── التحقق من صحة الـ Token المخزن ─────────────────────────────────────────
 export const verifyToken = async () => {
     const token = getToken();
     if (!token) return false;
+
+    // أولاً: فحص محلي سريع لانتهاء الصلاحية
+    if (isTokenExpiredLocally()) {
+        clearAuth();
+        return false;
+    }
+
     try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 ثواني timeout
         const res = await fetch(`${API_BASE}/api/auth/verify`, {
             headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal,
         });
+        clearTimeout(timeoutId);
+
         if (res.status === 401 || res.status === 403) {
             clearAuth();
             return false;
@@ -52,11 +79,12 @@ export const verifyToken = async () => {
         localStorage.setItem('auth_user', JSON.stringify(data.user));
         return true;
     } catch {
-        // في حال فشل الاتصال (Network Error)، نفترض أن التوكن لا يزال صالحاً
-        // لكي لا يسجل الخروج تلقائياً عند انقطاع الإنترنت المؤقت
+        // في حال فشل الاتصال (Network Error أو Timeout)، نفترض أن التوكن صالح
+        // لكي لا يُسجّل الخروج عند تصغير النافذة أو انقطاع الإنترنت المؤقت
         return true;
     }
 };
+
 
 // ─── طلب API مع الـ Token تلقائياً ──────────────────────────────────────────
 export const authFetch = async (url, options = {}) => {

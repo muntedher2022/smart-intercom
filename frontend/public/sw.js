@@ -1,5 +1,7 @@
-/* eslint-disable no-restricted-globals */
+/* eslint-disable no-undef */
+
 const channel = new BroadcastChannel('smart_intercom_sync');
+
 let currentRoomId = null;
 
 // استقبال الهوية والتوكن من التطبيق
@@ -16,7 +18,7 @@ self.addEventListener('push', function (event) {
 
     let data = { title: 'تنبيه جديد', body: 'لديك طلب جديد', toRoomId: null };
     if (event.data) {
-        try { data = event.data.json(); } catch (e) { data.body = event.data.text(); }
+        try { data = event.data.json(); } catch { data.body = event.data.text(); }
     }
 
     if (data.toRoomId !== null && currentRoomId !== null && data.toRoomId != currentRoomId) {

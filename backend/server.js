@@ -82,6 +82,9 @@ const loginLimiter = rateLimit ? rateLimit({
 }) : (req, res, next) => next();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'smart-intercom-super-secret-key-2025';
+if (!process.env.JWT_SECRET) {
+  console.warn('⚠️  تحذير أمني: يُستخدم JWT_SECRET الافتراضي. يرجى تعيينه في ملف .env في بيئة الإنتاج!');
+}
 const JWT_EXPIRES = process.env.JWT_EXPIRES_IN || '365d';
 // In cPanel, PORT might be a Unix Socket path, so we don't parseInt it if it doesn't look like a number
 const PORT = process.env.PORT || 3000;
@@ -89,16 +92,36 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 app.disable('x-powered-by');
 
-app.use(cors());
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+// CORS: السماح فقط من نفس النطاق أو المضيف المحلي
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : null; // null = السماح للجميع (مناسب للشبكة الداخلية)
 
-// ─── Basic Security Headers ──────────────────────────────────────────────────
+app.use(cors({
+  origin: (origin, callback) => {
+    // السماح بالطلبات بدون origin (مثل التطبيقات المحلية)
+    if (!origin) return callback(null, true);
+    if (!allowedOrigins || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    callback(new Error('CORS: النطاق غير مسموح به'));
+  },
+  credentials: true
+}));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+
+// ─── Security Headers ────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(self), camera=()');
   next();
 });
+
 
 // Handling subdirectory prefix for all routes (to work with and without /smart_system)
 app.use((req, res, next) => {
@@ -251,7 +274,7 @@ async function initDB() {
         id INT PRIMARY KEY AUTO_INCREMENT,
         username VARCHAR(255) NOT NULL UNIQUE,
         password VARCHAR(255) NOT NULL,
-        role ENUM('manager', 'secretary', 'kitchen', 'office-manager') NOT NULL,
+        role VARCHAR(50) NOT NULL,
         room_id INT
       ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci
     `);
@@ -344,14 +367,52 @@ async function initDB() {
       { username: 'secretary', password: 'sec123', role: 'secretary', room_id: 2 },
       { username: 'kitchen', password: 'kitchen123', role: 'kitchen', room_id: 3 },
       { username: 'office-manager', password: 'office123', role: 'office-manager', room_id: 4 },
+      { username: 'deputy-tech', password: 'deputy123', role: 'deputy-tech', room_id: 5 },
+      { username: 'office-tech', password: 'officetech123', role: 'office-tech', room_id: 6 },
+      { username: 'deputy-admin', password: 'deputy123', role: 'deputy-admin', room_id: 7 },
+      { username: 'office-admin', password: 'officeadmin123', role: 'office-admin', room_id: 8 },
+      // الأقسام والمديريات الجديدة
+      { username: 'commercial', password: 'dep123', role: 'department', room_id: 9 },
+      { username: 'legal', password: 'dep123', role: 'department', room_id: 10 },
+      { username: 'hr', password: 'dep123', role: 'department', room_id: 11 },
+      { username: 'communications', password: 'dep123', role: 'department', room_id: 12 },
+      { username: 'properties', password: 'dep123', role: 'department', room_id: 13 },
+      { username: 'marine-rescue', password: 'dep123', role: 'department', room_id: 14 },
+      { username: 'planning', password: 'dep123', role: 'department', room_id: 15 },
+      { username: 'audit', password: 'dep123', role: 'department', room_id: 16 },
+      { username: 'joint-ops', password: 'dep123', role: 'department', room_id: 17 },
+      { username: 'marine-inspection', password: 'dep123', role: 'department', room_id: 18 },
+      { username: 'marine-drilling', password: 'dep123', role: 'department', room_id: 19 },
+      { username: 'safety', password: 'dep123', role: 'department', room_id: 20 },
+      { username: 'control', password: 'dep123', role: 'department', room_id: 21 },
+      { username: 'marine-affairs', password: 'dep123', role: 'department', room_id: 22 },
+      { username: 'finance', password: 'dep123', role: 'department', room_id: 23 },
+      { username: 'engineering', password: 'dep123', role: 'department', room_id: 24 },
+      { username: 'contracts', password: 'dep123', role: 'department', room_id: 25 },
+      { username: 'international-code', password: 'dep123', role: 'department', room_id: 26 },
+      { username: 'shipyards', password: 'dep123', role: 'department', room_id: 27 },
+      { username: 'it', password: 'dep123', role: 'department', room_id: 28 },
+      { username: 'dir-nqasr', password: 'dep123', role: 'department', room_id: 29 },
+      { username: 'dir-abuflous', password: 'dep123', role: 'department', room_id: 30 },
+      { username: 'dir-maqal', password: 'dep123', role: 'department', room_id: 31 },
+      { username: 'dir-sqasr', password: 'dep123', role: 'department', room_id: 32 },
+      { username: 'inst-ports', password: 'dep123', role: 'department', room_id: 33 },
     ];
 
+    // إصلاح نوع عمود الصلاحيات إذا كان مقيداً بـ ENUM
+    try {
+      await pool.query("ALTER TABLE users MODIFY COLUMN role VARCHAR(50) NOT NULL");
+    } catch (e) { console.log("Could not alter users.role column:", e.message); }
+
     for (const u of defaultUsers) {
-      const [rows] = await pool.query('SELECT id FROM users WHERE username = ?', [u.username]);
+      const [rows] = await pool.query('SELECT id, role FROM users WHERE username = ?', [u.username]);
       if (rows.length === 0) {
         const hashed = bcrypt.hashSync(u.password, 10);
         await pool.query('INSERT INTO users (username, password, role, room_id) VALUES (?, ?, ?, ?)', [u.username, hashed, u.role, u.room_id]);
         status.push(`✅ تم إنشاء المستخدم: ${u.username}`);
+      } else if (!rows[0].role || rows[0].role === '' || rows[0].role !== u.role) {
+        await pool.query('UPDATE users SET role = ?, room_id = ? WHERE username = ?', [u.role, u.room_id, u.username]);
+        status.push(`✅ تم تحديث صلاحيات المستخدم: ${u.username}`);
       }
     }
 
@@ -360,29 +421,62 @@ async function initDB() {
       { id: 2, title: 'قسم السكرتارية', iconName: 'User', color: '#3b82f6', actions: JSON.stringify(['استدعاء فوري', 'طلب اجتماع', 'تجهيز أوليات']) },
       { id: 4, title: 'إدارة المكتب', iconName: 'Briefcase', color: '#a855f7', actions: JSON.stringify(['مراجعة البريد', 'جدول المواعيد', 'استقبال ضيوف']) },
       { id: 3, title: 'خدمات المطبخ', iconName: 'Coffee', color: '#f97316', actions: JSON.stringify(['شاي', 'قهوة سادة', 'ماء']) },
+      { id: 5, title: 'معاون المدير العام للشؤون الفنية', iconName: 'User', color: '#10b981', actions: JSON.stringify(['طلب حضور', 'ارسال اوليات']) },
+      { id: 7, title: 'معاون المدير العام للشؤون الادارية والمالية', iconName: 'User', color: '#f43f5e', actions: JSON.stringify(['طلب حضور', 'ارسال اوليات']) },
+      { id: 0, title: 'المدير العام', iconName: 'User', color: '#3b82f6', actions: JSON.stringify(['استئذان دخول', 'يرجى الاطلاع']) },
+      { id: 6, title: 'ادارة المكتب الخاص به (فني)', iconName: 'Briefcase', color: '#a855f7', actions: JSON.stringify(['تجهيز أوليات']) },
+      { id: 8, title: 'ادارة المكتب الخاص به (اداري)', iconName: 'Briefcase', color: '#f43f5e', actions: JSON.stringify(['تجهيز أوليات']) },
+      // الأقسام والمديريات الجديدة
+      { id: 9, title: 'القسم التجاري', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 10, title: 'القسم القانوني', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 11, title: 'قسم ادارة الموارد البشرية', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 12, title: 'قسم الاتصالات والرصد البحري', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 13, title: 'قسم الاملاك والأراضي', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 14, title: 'قسم الانقاذ البحري', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 15, title: 'قسم التخطيط والمتابعة', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 16, title: 'قسم التدقيق والرقابة الداخلية', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 17, title: 'قسم التشغيل المشترك', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 18, title: 'قسم التفتيش البحري', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 19, title: 'قسم الحفر البحري', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 20, title: 'قسم السلامة والاطفاء', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 21, title: 'قسم السيطرة والتوجيه البحري', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 22, title: 'قسم الشؤون البحرية', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 23, title: 'قسم الشؤون المالية', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 24, title: 'قسم الشؤون الهندسية', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 25, title: 'قسم العقود', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 26, title: 'قسم المدونة الدولية', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 27, title: 'قسم المسافن', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 28, title: 'قسم تكنولوجيا المعلومات', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 29, title: 'مديرية ام قصر الشمالي', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 30, title: 'مديرية ميناء ابو فلوس', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 31, title: 'مديرية ميناء المعقل', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 32, title: 'مديرية ام قصر الجنوبي', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
+      { id: 33, title: 'معهد الموانئ', iconName: 'Briefcase', color: '#0ea5e9', actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) },
     ];
 
-    const [secRows] = await pool.query('SELECT COUNT(*) as cnt FROM sections');
-    if (secRows[0].cnt === 0) {
-      for (const s of defaultSections) {
+    for (const s of defaultSections) {
+      const [rows] = await pool.query('SELECT id FROM sections WHERE id = ?', [s.id]);
+      if (rows.length === 0) {
         await pool.query('INSERT INTO sections (id, title, iconName, color, actions) VALUES (?, ?, ?, ?, ?)', [s.id, s.title, s.iconName, s.color, s.actions]);
       }
-      status.push('✅ تم إدراج الأقسام الافتراضية');
     }
+    status.push('✅ تم فحص وإدراج الأقسام الافتراضية');
 
-    // إدراج إعدادات الأزرار الافتراضية
-    const [settRows] = await pool.query('SELECT COUNT(*) as cnt FROM receiver_settings');
-    if (settRows[0].cnt === 0) {
-      const defaultReceiverSettings = [
-        { room_id: 2, actions: JSON.stringify(['استئذان دخول', 'قدوم ضيف', 'مذكرة جاهزة للتوقيع', 'امر طارئ']) },
-        { room_id: 4, actions: JSON.stringify(['استئذان دخول', 'ضيف بالانتظار', 'البريد جاهزة للتوقيع', 'امر طارئ']) },
-        { room_id: 3, actions: JSON.stringify(['استئذان دخول', 'الطلب جاهز', 'الفطور جاهز', 'الغداء جاهز']) },
-      ];
-      for (const s of defaultReceiverSettings) {
+    const defaultReceiverSettings = [
+      { room_id: 2, actions: JSON.stringify(['استئذان دخول', 'قدوم ضيف', 'مذكرة جاهزة للتوقيع', 'امر طارئ']) },
+      { room_id: 4, actions: JSON.stringify(['استئذان دخول', 'ضيف بالانتظار', 'البريد جاهزة للتوقيع', 'امر طارئ']) },
+      { room_id: 3, actions: JSON.stringify(['استئذان دخول', 'الطلب جاهز', 'الفطور جاهز', 'الغداء جاهز']) },
+      { room_id: 6, actions: JSON.stringify(['استئذان دخول', 'ضيف بالانتظار', 'امر طارئ']) },
+      { room_id: 8, actions: JSON.stringify(['استئذان دخول', 'ضيف بالانتظار', 'امر طارئ']) },
+      ...Array.from({ length: 25 }, (_, i) => ({ room_id: i + 9, actions: JSON.stringify(['ارسال كتاب', 'اجابة على هامش', 'يرجى الاطلاع']) }))
+    ];
+    for (const s of defaultReceiverSettings) {
+      const [rows] = await pool.query('SELECT room_id FROM receiver_settings WHERE room_id = ?', [s.room_id]);
+      if (rows.length === 0) {
         await pool.query('INSERT INTO receiver_settings (room_id, actions) VALUES (?, ?)', [s.room_id, s.actions]);
       }
-      status.push('✅ تم إدراج إعدادات الأزرار الافتراضية');
     }
+    status.push('✅ تم فحص وإدراج إعدادات الأزرار الافتراضية');
 
     status.push('✅ تم تهيئة قاعدة البيانات MySQL بنجاح');
     console.log('✅ DB Init success');
@@ -1063,31 +1157,40 @@ io.on('connection', (socket) => {
   console.log(`✅ [${new Date().toLocaleTimeString('ar-EG')}] متصل: ${socket.user.username} (Room: ${roomId})`);
 
   // تحديث التواجد فور الاتصال
-  if (roomId !== undefined) roomLastSeen.set(roomId, Date.now());
+  if (roomId !== undefined && roomId !== null) roomLastSeen.set(roomId, Date.now());
+  // إشعار المدراء فوراً (بدون انتظار join-room) أن الغرفة متصلة
+  if (roomId !== undefined && roomId !== null && roomId !== 0) {
+    notifyManagersOfRoomStatus(roomId, true);
+  }
 
   // تحديث التواجد عند أي رسالة من السوكيت
   socket.onAny(() => {
-    if (roomId !== undefined) roomLastSeen.set(roomId, Date.now());
+    if (roomId !== undefined && roomId !== null) roomLastSeen.set(roomId, Date.now());
   });
 
-  if (socket.user.role === 'manager') {
+
+  // المدير والمعاونون ينضمون لغرفة الإدارة لاستقبال تحديثات حالة الغرف
+  const isManagementUser = ['manager', 'deputy-tech', 'deputy-admin'].includes(socket.user.role);
+  if (isManagementUser) {
     socket.join('manager_room');
   }
 
+
   socket.emit('manager-busy-status', isManagerBusy);
 
-  // إرسال حالة جميع الغرف المتصلة حالياً للمدير فور دخوله
-  if (socket.user.role === 'manager') {
+  // إرسال حالة جميع الغرف للمدير والمعاونين فور الاتصال
+  if (isManagementUser) {
     const currentStatuses = {};
-    roomLastSeen.forEach((lastSeen, roomId) => {
+    roomLastSeen.forEach((lastSeen, rId) => {
       const isRecentlySeen = (Date.now() - lastSeen) < 305000;
-      const hasSockets = roomMembers.has(roomId) && roomMembers.get(roomId).size > 0;
+      const hasSockets = roomMembers.has(rId) && roomMembers.get(rId).size > 0;
       if (isRecentlySeen || hasSockets) {
-        currentStatuses[roomId] = true;
+        currentStatuses[rId] = true;
       }
     });
     socket.emit('all-room-statuses', currentStatuses);
   }
+
 
   socket.on('set-manager-busy', (status) => {
     if (socket.user.role === 'manager') {
@@ -1098,25 +1201,48 @@ io.on('connection', (socket) => {
 
   // ─── الانضمام لغرفة ────────────────────────────────────────────────────────
   socket.on('join-room', (roomId) => {
-    if (socket.user.role !== 'manager' && socket.user.room_id !== roomId) {
-      console.warn(`⚠️  غير مصرح: ${socket.user.username} حاول دخول غرفة ${roomId}`);
-      socket.emit('auth-error', { message: 'غير مسموح بالدخول لهذه الغرفة' });
+    const role = socket.user.role;
+    const userRoomId = Number(socket.user.room_id);
+    const reqRoom = Number(roomId);
+
+    // تحديد الغرف المسموح بها لكل دور
+    let allowedRooms;
+    if (role === 'manager') {
+      allowedRooms = null; // المدير يدخل أي غرفة
+    } else if (role === 'deputy-tech') {
+      allowedRooms = [0, 5, 6]; // غرفة الإدارة + غرفته + مكتبه
+    } else if (role === 'deputy-admin') {
+      allowedRooms = [0, 7, 8]; // غرفة الإدارة + غرفته + مكتبه
+    } else if (role === 'office-tech') {
+      allowedRooms = [6]; // مكتبه فقط
+    } else if (role === 'office-admin') {
+      allowedRooms = [8]; // مكتبه فقط
+    } else {
+      allowedRooms = [userRoomId]; // باقي الأدوار: غرفتهم فقط
+    }
+
+    const isAllowed = allowedRooms === null || allowedRooms.includes(reqRoom);
+
+    if (!isAllowed) {
+      console.warn(`⚠️  غير مصرح: ${socket.user.username} (${role}) حاول دخول غرفة ${reqRoom}`);
+      // لا نُجبر تسجيل الخروج – خطأ غرفة لا يعني خطراً أمنياً
       return;
     }
     socket.join(roomId);
     if (!roomMembers.has(roomId)) roomMembers.set(roomId, new Set());
     roomMembers.get(roomId).add(socket.id);
-    roomLastSeen.set(roomId, Date.now()); // تحديث آخر ظهور عند الاتصال بالسوكيت أيضاً
-    console.log(`   ${socket.user.username} انضم لغرفة ${roomId}`);
+    roomLastSeen.set(roomId, Date.now());
+    console.log(`   ${socket.user.username} (${role}) انضم لغرفة ${roomId}`);
 
     // إرسال حالة الاتصال للمدراء
     notifyManagersOfRoomStatus(roomId, true);
   });
 
+
   // ─── إرسال طلب (المدير فقط) ────────────────────────────────────────────────
   socket.on('send-notification', async (data) => {
-    if (socket.user.role !== 'manager') {
-      socket.emit('auth-error', { message: 'إرسال الطلبات للمدير فقط' });
+    if (socket.user.role !== 'manager' && !socket.user.role.startsWith('deputy-')) {
+      socket.emit('auth-error', { message: 'إرسال الطلبات للمسؤولين فقط' });
       return;
     }
     try {
@@ -1132,13 +1258,17 @@ io.on('connection', (socket) => {
       const [result] = await pool.query(`
         INSERT INTO notifications_log (from_name, from_room_id, to_room_id, to_section_title, message, audio, status, sent_at)
         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
-      `, [fromName, 0, data.toRoomId, sectionTitle, message, audio, sentAt]);
+      `, [fromName, socket.user.role === 'manager' ? 0 : socket.user.room_id, data.toRoomId, sectionTitle, message, audio, sentAt]);
 
       const logId = result.insertId;
       const payload = { ...data, message, sectionTitle, fromName, logId, sentAt, audio };
 
       // إرسال للقسم المحدد
-      io.to(data.toRoomId).emit('receive-notification', payload);
+      if (data.toRoomId === 0) {
+        io.to('manager_room').emit('receive-manager-notification', payload);
+      } else {
+        io.to(data.toRoomId).emit('receive-notification', payload);
+      }
 
       // إرسال Web Push للقسم (للهواتف المغلقة)
       sendWebPushNotification(data.toRoomId, {
@@ -1275,26 +1405,34 @@ io.on('connection', (socket) => {
       let audio = data.audio || null;
       if (audio) audio = saveAudioFile(audio);
 
-      // 0 يمثل المدير العام
+      const targetRoomId = data.targetRoomId !== undefined ? data.targetRoomId : 0;
+
+      // 0 يمثل المدير العام، وغيره يمثل المعاونين
       const [result] = await pool.query(`
         INSERT INTO notifications_log (from_name, from_room_id, to_room_id, to_section_title, message, audio, status, sent_at)
-        VALUES (?, ?, 0, 'المدير', ?, ?, 'pending', ?)
-      `, [fromName, data.fromRoomId || socket.user.room_id, message, audio, sentAt]);
+        VALUES (?, ?, ?, 'المدير', ?, ?, 'pending', ?)
+      `, [fromName, data.fromRoomId || socket.user.room_id, targetRoomId, message, audio, sentAt]);
 
       const logId = result.insertId;
-      const payload = { ...data, message, fromName, logId, sentAt, audio, toRoomId: 0 };
+      const payload = { ...data, message, fromName, logId, sentAt, audio, toRoomId: targetRoomId };
 
       // إرسال للمدراء
-      io.to('manager_room').emit('receive-manager-notification', payload);
+      if (targetRoomId === 0) {
+        io.to('manager_room').emit('receive-manager-notification', payload);
+      } else {
+        io.to(targetRoomId).emit('receive-manager-notification', payload);
+      }
 
       // إرسال Web Push للمديرين (للهواتف المغلقة)
-      sendWebPushNotification('manager', {
-        title: `طلب جديد من ${fromName}`,
-        body: message,
-        icon: '/logo.png',
-        url: '/smart_system/',
-        toRoomId: 0
-      });
+      if (targetRoomId === 0) {
+        sendWebPushNotification('manager', {
+          title: `طلب جديد من ${fromName}`,
+          body: message,
+          icon: '/logo.png',
+          url: '/smart_system/',
+          toRoomId: 0
+        });
+      }
 
       // إخبار جميع الأجهزة في نفس القسم (مثلاً إذا أرسل من الهاتف يظهر في الحاسوب)
       if (socket.user.room_id) {
@@ -1317,15 +1455,24 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log(`❌ [${new Date().toLocaleTimeString('ar-EG')}] قطع الاتصال: ${socket.user?.username}`);
 
-    roomMembers.forEach((members, roomId) => {
+    roomMembers.forEach((members, rId) => {
       if (members.delete(socket.id) && members.size === 0) {
-        // لا نحول الحالة لـ أوفلاين فوراً، بل نترك نظام الـ Audit الدوري يتكفل بذلك
-        // هذا يمنع التقطع (Flickering) عند تبديل الشبكات أو النوم المؤقت للهاتف
-        console.log(`ℹ️ [Session] ${socket.user?.username} disconnected. Waiting for audit...`);
+        // فترة سماح قصيرة (8 ثواني) لتسمح لإعادة الاتصال التلقائي (مثلاً عند تبديل الشبكة)
+        // بعد الفترة إذا لم يعد أحد → نحوّله offline فوراً بدلاً من الانتظار 15 دقيقة
+        setTimeout(() => {
+          const stillEmpty = !roomMembers.has(rId) || roomMembers.get(rId).size === 0;
+          if (stillEmpty) {
+            console.log(`📴 [Room ${rId}] أصبح غير متصل`);
+            // حذف آخر وقت ظهور لمنع نظام Audit من اعتباره متصلاً
+            roomLastSeen.delete(rId);
+            notifyManagersOfRoomStatus(rId, false);
+          }
+        }, 8000); // 8 ثوان فترة سماح
       }
     });
   });
 });
+
 
 // ─── إعادة توجيه كل المسارات غير الموجودة في API إلى الواجهة الأمامية ───────────
 app.get('*', (req, res) => {
@@ -1383,9 +1530,5 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 السيرفر يعمل على:`);
   console.log(`   Local:   http://localhost:${PORT}`);
   console.log(`   Network: http://${ip}:${PORT}`);
-  console.log(`\n📋 البيانات الافتراضية:`);
-  console.log(`   manager        / manager123`);
-  console.log(`   secretary      / sec123`);
-  console.log(`   kitchen        / kitchen123`);
-  console.log(`   office-manager / office123\n`);
+
 });

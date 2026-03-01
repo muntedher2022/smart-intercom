@@ -83,7 +83,7 @@ const showNativeNotification = (title, body) => {
 // ملف صامت تم اختياره بعناية ليكون متوافقاً مع الهواتف دون إحداث فرقعة صوتية (Real Silent Data URI)
 const SILENT_AUDIO_BASE64 = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAgLsAAAB3AAACABAAZGF0YQQAAAD//w==";
 let silentAudioElement = null;
-let lastHeartbeatTime = 0;
+// lastHeartbeatTime
 
 // ─── ميزة Heartbeat المعززة (إشارات نبض الحياة) ───────────────────────────────────
 // نستخدم Beacon لضمان وصول الطلب حتى لو أغلقت النافذة أو اختفت
@@ -100,7 +100,7 @@ const performHeartbeat = (onSuccess) => {
         if (onSuccess) onSuccess({ pendingCount: 0 });
         return;
       }
-    } catch (e) { }
+    } catch { /* ignore */ }
   }
 
   authFetch(url, { method: "POST" })
@@ -119,12 +119,16 @@ const startSilentKeepAlive = (onHeartbeatTick) => {
   const playAttempt = () => { silentAudioElement.play().catch(() => { }); };
   playAttempt();
 
+  let _lastHeartbeatTime = 0; // used to track heartbeat timing
+
   const triggerHeartbeat = () => {
     performHeartbeat(() => {
       if (onHeartbeatTick) onHeartbeatTick();
-      lastHeartbeatTime = Date.now();
+      _lastHeartbeatTime = Date.now();
+
     });
   };
+
 
   if (window.__heartbeatInterval) clearInterval(window.__heartbeatInterval);
   window.__heartbeatInterval = setInterval(triggerHeartbeat, 30000);
@@ -139,13 +143,15 @@ const startSilentKeepAlive = (onHeartbeatTick) => {
   }
 };
 
-const stopSilentKeepAlive = () => {
+const _stopSilentKeepAlive = () => {
+
   if (silentAudioElement) {
     silentAudioElement.pause();
     silentAudioElement.onended = null;
     silentAudioElement = null;
   }
 };
+
 
 const FullScreenWrapper = ({ children }) => {
   useEffect(() => {
@@ -204,12 +210,14 @@ const ConnectionBadge = ({ connected }) => {
 
   useEffect(() => {
     if (connected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEffective(true);
     } else {
       const t = setTimeout(() => setEffective(false), 300000);
       return () => clearTimeout(t);
     }
   }, [connected]);
+
 
   return (
     <div style={{
@@ -485,21 +493,7 @@ const LoginPage = ({ onLogin }) => {
             </button>
           </form>
 
-          {/* بيانات افتراضية */}
-          <div style={{ marginTop: 24, padding: 16, backgroundColor: "#0f172a", borderRadius: 14, border: "1px solid #1e3a5f" }}>
-            <p style={{ color: "#475569", margin: "0 0 10px", fontSize: "0.78rem", fontWeight: 600, textAlign: "center" }}>بيانات الدخول الافتراضية</p>
-            {[
-              { role: "المدير", user: "manager", pass: "manager123", color: "#3b82f6" },
-              { role: "السكرتارية", user: "secretary", pass: "sec123", color: "#a855f7" },
-              { role: "المطبخ", user: "kitchen", pass: "kitchen123", color: "#f97316" },
-              { role: "مدير المكتب", user: "office-manager", pass: "office123", color: "#22c55e" },
-            ].map(u => (
-              <div key={u.user} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" }}>
-                <span style={{ color: u.color, fontSize: "0.78rem", fontWeight: 600 }}>{u.role}</span>
-                <span style={{ color: "#64748b", fontSize: "0.73rem" }}>{u.user} / {u.pass}</span>
-              </div>
-            ))}
-          </div>
+
         </div>
       </div>
     </FullScreenWrapper>
@@ -562,7 +556,16 @@ const ChangePasswordModal = ({ onClose, onSuccess }) => {
 // ══════════════════════════════════════════════════════════════════════════════
 const TopBar = ({ user, onLogout, onChangePassword, connected }) => {
   const isMobile = useIsMobile();
-  const roleLabel = { manager: "المدير العام", secretary: "السكرتارية", kitchen: "المطبخ", "office-manager": "مدير المكتب" };
+  const roleLabel = {
+    manager: "المدير العام",
+    secretary: "السكرتارية",
+    kitchen: "المطبخ",
+    "office-manager": "مدير المكتب",
+    "deputy-tech": "معاون المدير العام الفني",
+    "office-tech": "إدارة مكتب المعاون الفني",
+    "deputy-admin": "معاون المدير العام الإداري والمالي",
+    "office-admin": "إدارة مكتب المعاون الإداري والمالي"
+  };
   return (
     <div style={{
       position: "fixed", top: 0, left: 0, right: 0, zIndex: 1000,
@@ -577,9 +580,12 @@ const TopBar = ({ user, onLogout, onChangePassword, connected }) => {
           <ConnectionBadge connected={connected} />
         </div>
         <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "flex-end" : "center", gap: isMobile ? 2 : 5 }}>
+          { }
           <span style={{ color: "white", fontWeight: 600, fontSize: "0.85rem" }}>{user?.username}</span>
           {!isMobile && <span style={{ color: "#94a3b8" }}>·</span>}
-          <span style={{ color: "#3b82f6", fontSize: isMobile ? "0.75rem" : "0.85rem" }}>{roleLabel[user?.role]}</span>
+          <span style={{ color: "#3b82f6", fontSize: isMobile ? "0.75rem" : "0.85rem" }}>
+            {user?.role === "department" ? (window.app_sections_cache?.[user?.room_id] || "قسم / مديرية") : (roleLabel[user?.role] || user?.role)}
+          </span>
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, width: isMobile ? "100%" : "auto", justifyContent: isMobile ? "space-between" : "flex-start" }}>
@@ -666,7 +672,9 @@ const LogsPanel = ({ onClose, roomId = null, initialTab = "logs" }) => {
     setLoadingMore(false);
   }, [roomId, searchQuery, dateFilter, page]);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(true); }, [roomId, searchQuery, dateFilter]); // Only reload on filter change
+
 
   const handleScroll = (e) => {
     if (tab !== "logs" || loading || loadingMore || !hasMore) return;
@@ -894,7 +902,7 @@ const AgendaPanel = ({ onClose, user }) => {
     try {
       const res = await authFetch(`/api/agenda/${selectedDate}`);
       if (res.ok) setItems(await res.json());
-    } catch { }
+    } catch { /* ignore */ }
     setLoading(false);
   }, [selectedDate]);
 
@@ -920,7 +928,7 @@ const AgendaPanel = ({ onClose, user }) => {
         socket.emit("agenda-updated", selectedDate);
         loadAgenda();
       }
-    } catch { }
+    } catch { /* ignore */ }
   };
 
   const handleToggle = async (id, currentStatus) => {
@@ -931,7 +939,7 @@ const AgendaPanel = ({ onClose, user }) => {
       });
       socket.emit("agenda-updated", selectedDate);
       loadAgenda();
-    } catch { }
+    } catch { /* ignore */ }
   };
 
   const handleCancelToggle = async (id, currentCancelled) => {
@@ -942,7 +950,7 @@ const AgendaPanel = ({ onClose, user }) => {
       });
       socket.emit("agenda-updated", selectedDate);
       loadAgenda();
-    } catch { }
+    } catch { /* ignore */ }
   };
 
   const handleDelete = async (id) => {
@@ -951,7 +959,7 @@ const AgendaPanel = ({ onClose, user }) => {
       await authFetch(`/api/agenda/${id}`, { method: "DELETE" });
       socket.emit("agenda-updated", selectedDate);
       loadAgenda();
-    } catch { }
+    } catch { /* ignore */ }
   };
 
   const handleSaveEdit = async (id) => {
@@ -964,7 +972,7 @@ const AgendaPanel = ({ onClose, user }) => {
       setEditingId(null);
       socket.emit("agenda-updated", selectedDate);
       loadAgenda();
-    } catch { }
+    } catch { /* ignore */ }
   };
 
   const handleDragStart = (e, index) => {
@@ -996,7 +1004,7 @@ const AgendaPanel = ({ onClose, user }) => {
         body: JSON.stringify({ orderedIds })
       });
       socket.emit("agenda-updated", selectedDate);
-    } catch { }
+    } catch { /* ignore */ }
   };
 
   const handleExportPDF = async () => {
@@ -1083,9 +1091,10 @@ const AgendaPanel = ({ onClose, user }) => {
       printWindow.document.write(html);
       printWindow.document.close();
       setShowExportModal(false);
-    } catch (e) {
+    } catch { /* ignore */
       alert("حدث خطأ أثناء التصدير للـ PDF");
     }
+
     setExporting(false);
   };
 
@@ -1239,7 +1248,7 @@ const FilesPanel = ({ onClose, user, showToast }) => {
     try {
       const res = await authFetch("/api/categories");
       if (res.ok) setCategories(await res.json());
-    } catch { }
+    } catch { /* ignore */ }
   };
 
   const fetchFiles = async (q = search, cat = filterCategory) => {
@@ -1247,14 +1256,16 @@ const FilesPanel = ({ onClose, user, showToast }) => {
     try {
       const res = await authFetch(`/api/files?search=${q}&category=${cat}`);
       if (res.ok) setFiles(await res.json());
-    } catch { }
+    } catch { /* ignore */ }
     setLoading(false);
   };
 
   useEffect(() => {
     fetchFiles(search, filterCategory);
     fetchCats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterCategory]);
+
 
   const handleUpload = (e) => {
     e.preventDefault();
@@ -1310,7 +1321,7 @@ const FilesPanel = ({ onClose, user, showToast }) => {
     try {
       const res = await authFetch("/api/categories", { method: "POST", body: JSON.stringify({ name: newCat }) });
       if (res.ok) { setNewCat(""); fetchCats(); }
-    } catch { }
+    } catch { /* ignore */ }
   };
 
   const delCat = async (name) => {
@@ -1318,7 +1329,7 @@ const FilesPanel = ({ onClose, user, showToast }) => {
     try {
       const res = await authFetch(`/api/categories/${name}`, { method: "DELETE" });
       if (res.ok) fetchCats();
-    } catch { }
+    } catch { /* ignore */ }
   };
 
   const deleteFile = async (id) => {
@@ -1326,7 +1337,7 @@ const FilesPanel = ({ onClose, user, showToast }) => {
     try {
       const res = await authFetch(`/api/files/${id}`, { method: "DELETE" });
       if (res.ok) fetchFiles(search, filterCategory);
-    } catch { }
+    } catch { /* ignore */ }
   };
 
   return (
@@ -1509,7 +1520,7 @@ const SystemPanel = ({ onClose }) => {
     try {
       const res = await authFetch('/api/admin/storage-stats');
       if (res.ok) setStats(await res.json());
-    } catch { }
+    } catch { /* ignore */ }
   };
 
   useEffect(() => {
@@ -1531,9 +1542,10 @@ const SystemPanel = ({ onClose }) => {
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
-    } catch (e) {
+    } catch { /* ignore */
       alert("تعذر تحميل النسخة الاحتياطية");
     }
+
     setDownloading(false);
   };
 
@@ -1642,7 +1654,9 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
     }
   }, [connected]);
   // حالة الطلبات الحية: { [logId]: { status, updatedAt } }
+  // eslint-disable-next-line no-unused-vars
   const [liveStatus, setLiveStatus] = useState({});
+
   // حالة الغرف (متصل/غير متصل)
   const [roomOnline, setRoomOnline] = useState({});
   const [managerIncoming, setManagerIncoming] = useState([]);
@@ -1652,8 +1666,9 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
   const [selectedSound, setSelectedSound] = useState(() => localStorage.getItem("app_sound_0") || APP_SOUNDS[0].url);
 
   // ─── دوال الجلب والمزامنة ──────────────────────────────────────────
+  const roomId = user?.role === 'manager' ? 0 : user?.room_id;
   const loadManagerNotifications = useCallback((buster = "") => {
-    authFetch(`/api/notifications/0${buster}`)
+    authFetch(`/api/notifications/${roomId}${buster}`)
       .then(r => r.ok ? r.json() : [])
       .then(data => {
         if (Array.isArray(data)) {
@@ -1675,7 +1690,8 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
         }
       })
       .catch(console.error);
-  }, []);
+  }, [roomId]);
+
 
   const stopAudio = () => {
     if (audioRef.current) {
@@ -1686,23 +1702,25 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
 
   // تحميل إعدادات المدير (بما في ذلك النغمة) من السيرفر عند البدء
   useEffect(() => {
-    authFetch("/api/receiver-settings/0")
+    const rId = user?.role === 'manager' ? 0 : user?.room_id;
+    authFetch(`/api/receiver-settings/${rId}`)
       .then(r => r.ok ? r.json() : { actions: [], sound_url: null })
       .then(data => {
         if (data.sound_url) {
           setSelectedSound(data.sound_url);
-          localStorage.setItem("app_sound_0", data.sound_url);
+          localStorage.setItem(`app_sound_${rId}`, data.sound_url);
         }
       })
       .catch(console.error);
-  }, []);
+  }, [user]);
   const [todayAgenda, setTodayAgenda] = useState([]);
   const [remindersGiven, setRemindersGiven] = useState(new Set());
 
   const changeSound = (url) => {
+    const rId = user?.role === 'manager' ? 0 : user?.room_id;
     setSelectedSound(url);
-    localStorage.setItem("app_sound_0", url);
-    socket.emit("update-receiver-settings", { roomId: 0, sound_url: url });
+    localStorage.setItem(`app_sound_${rId}`, url);
+    socket.emit("update-receiver-settings", { roomId: rId, sound_url: url });
 
     // تشغيل النغمة للمعاينة بشكل مستقل لضمان عملها
     const previewAudio = new Audio(url);
@@ -1784,12 +1802,16 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
 
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
-    if (socket.connected) socket.emit("join-room", 0);
+    if (socket.connected && user) {
+      const targetRoom = user.role === 'manager' ? 0 : user.room_id;
+      socket.emit("join-room", targetRoom);
+    }
 
     // تأكيد الإرسال من السيرفر
-    socket.on("notification-sent", ({ logId, message }) => {
+    socket.on("notification-sent", ({ logId }) => {
       setLiveStatus(p => ({ ...p, [logId]: { status: "pending" } }));
     });
+
 
     // تحديث حالة طلب (الاستلام/الإنجاز)
     socket.on("notification-status-updated", ({ logId, status, sectionTitle }) => {
@@ -1805,9 +1827,10 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
     });
 
     // حالة الغرف
-    socket.on("room-status", ({ roomId, isOnline }) => {
-      setRoomOnline(p => ({ ...p, [roomId]: isOnline }));
+    socket.on("room-status", ({ roomId: rid, isOnline }) => {
+      setRoomOnline(p => ({ ...p, [rid]: isOnline }));
     });
+
 
     socket.on("all-room-statuses", (statuses) => {
       setRoomOnline(p => ({ ...p, ...statuses }));
@@ -1819,8 +1842,13 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
       localStorage.setItem("app_sections", JSON.stringify(updated));
     });
 
-    // خطأ مصادقة → تسجيل خروج
-    socket.on("auth-error", () => onLogout());
+    const handleAuthError = (err) => {
+      // لا نُسجّل الخروج تلقائياً بسبب خطأ في غرفة Socket
+      // الأمان مضمون عبر JWT في كل طلب HTTP
+      console.warn("Auth error (socket):", err?.message || err);
+    };
+    socket.on("auth-error", handleAuthError);
+
 
     // إشعارات واردة للمدير
     const handleManagerNotification = (data) => {
@@ -1845,6 +1873,7 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
     };
 
     socket.on("receive-manager-notification", handleManagerNotification);
+    socket.on("receive-notification", handleManagerNotification);
 
     return () => {
       socket.off("connect", onConnect);
@@ -1854,17 +1883,20 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
       socket.off("room-status");
       socket.off("sections-updated");
       socket.off("receive-manager-notification", handleManagerNotification);
+      socket.off("receive-notification", handleManagerNotification);
+      socket.off("auth-error", handleAuthError);
       socket.off("auth-error");
     };
-  }, [showToast, onLogout, managerAudioEnabled]);
+  }, [showToast, onLogout, managerAudioEnabled, user]);
 
   const loadTodayAgenda = useCallback(async () => {
+    if (user?.role !== 'manager') return;
     try {
       const today = getLocalDate();
       const res = await authFetch(`/api/agenda/${today}`);
       if (res.ok) setTodayAgenda(await res.json());
-    } catch { }
-  }, []);
+    } catch { /* ignore */ }
+  }, [user]);
 
   const lastDateRef = useRef(getLocalDate());
 
@@ -1996,8 +2028,9 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
 
   const sendOrder = (targetId, message, sectionTitle) => {
     if (!message?.trim()) return;
+    const fromName = user?.role === 'manager' ? 'المدير العام' : (user?.role === 'deputy-tech' ? 'معاون المدير الفني' : 'معاون المدير الاداري');
     socket.emit("send-notification", {
-      toRoomId: targetId, fromName: "المدير العام",
+      toRoomId: targetId, fromName: fromName,
       message: message.trim(), sectionTitle,
     });
     showToast(`تم إرسال: ${message}`, "success");
@@ -2050,9 +2083,10 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
           });
         }, 1000);
         setRecordingId(targetId);
-      } catch (err) {
+      } catch { /* microphone access denied */
         showToast("فشل الوصل للميكروفون، يرجى السماح له", "error");
       }
+
     }
   };
 
@@ -2174,12 +2208,12 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
                 }
                 // تفعيل نظام النبض الصامت للمدير لإبقاء التطبيق حياً في الخلفية
                 startSilentKeepAlive(() => {
-                  performHeartbeat((data) => {
-                    // إيقاف تشغيل الصوت هنا منعاً لنبضات الصوت المزعجة
+                  performHeartbeat(() => {
                     // الجلب الفوري للطلبات عند كل نبضة
                     loadManagerNotifications();
                   });
                 });
+
                 loadManagerNotifications();
                 loadTodayAgenda();
 
@@ -2201,21 +2235,7 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
           <h1 style={{ fontSize: "calc(1.6rem + 1.2vw)", fontWeight: 900, margin: "0 0 12px", color: "#ffffff" }}>
             نظام النداء والخدمات المركزية
           </h1>
-          {/* مؤشرات حالة الغرف */}
-          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
-            {sections.map(s => (
-              <div key={s.id} style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "4px 12px", borderRadius: 20,
-                backgroundColor: roomOnline[s.id] ? "#14532d22" : "#0f172a",
-                border: `1px solid ${roomOnline[s.id] ? "#22c55e44" : "#334155"}`,
-                fontSize: "0.78rem", color: roomOnline[s.id] ? "#86efac" : "#475569",
-              }}>
-                <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: roomOnline[s.id] ? "#22c55e" : "#475569", display: "inline-block", ...(roomOnline[s.id] ? { boxShadow: "0 0 6px #22c55e" } : {}) }} />
-                {s.title}
-              </div>
-            ))}
-          </div>
+          {/* مؤشرات حالة الغرف تم إخفاؤها */}
         </header>
 
 
@@ -2225,36 +2245,117 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
             <span style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: effectiveConnected ? "#22c55e" : "#ef4444", boxShadow: effectiveConnected ? "0 0 8px #22c55e" : "none" }}></span>
             <span style={{ fontSize: "0.85rem", color: effectiveConnected ? "#86efac" : "#fca5a5", fontWeight: "bold" }}>{effectiveConnected ? "النظام متصل" : "جاري إعادة الاتصال..."}</span>
           </div>
-          <button
-            onClick={() => socket.emit("set-manager-busy", !isManagerBusy)}
-            title={isManagerBusy ? "مشغول (في اجتماع)" : "متاح"}
-            style={{ background: isManagerBusy ? "#ef4444" : "#22c55e", border: "1px solid transparent", padding: "11px 16px", borderRadius: 14, cursor: "pointer", color: "white", display: "flex", alignItems: "center", gap: 6, fontWeight: "bold", fontFamily: "inherit" }}>
-            {isManagerBusy ? "🔕 مشغول" : "🔔 متاح"}
-          </button>
+          {user?.role === "manager" && (
+            <button
+              onClick={() => socket.emit("set-manager-busy", !isManagerBusy)}
+              title={isManagerBusy ? "مشغول (في اجتماع)" : "متاح"}
+              style={{ background: isManagerBusy ? "#ef4444" : "#22c55e", border: "1px solid transparent", padding: "11px 16px", borderRadius: 14, cursor: "pointer", color: "white", display: "flex", alignItems: "center", gap: 6, fontWeight: "bold", fontFamily: "inherit" }}>
+              {isManagerBusy ? "🔕 مشغول" : "🔔 متاح"}
+            </button>
+          )}
+
           <button onClick={() => setShowSettings(true)} title="إعدادات" style={{ background: "#0f172a", border: "1px solid #3b82f6", padding: 11, borderRadius: 14, cursor: "pointer", color: "white", display: "flex", alignItems: "center", gap: 5 }}>
             <Settings size={22} color="#3b82f6" /> {isMobile ? "" : "إعدادات"}
           </button>
-          <button onClick={() => setShowAgenda(true)} title="جدول الأعمال" style={{ background: "#2e1065", border: "1px solid #a855f7", padding: 11, borderRadius: 14, cursor: "pointer", color: "#d8b4fe", display: "flex", alignItems: "center", gap: 5 }}>
-            <Calendar size={22} /> {isMobile ? "" : "الجدول"}
-          </button>
-          <button onClick={() => setShowLogs("logs")} title="سجل الطلبات" style={{ background: "#1e3a8a", border: "1px solid #3b82f6", padding: 11, borderRadius: 14, cursor: "pointer", color: "#bfdbfe", display: "flex", alignItems: "center", gap: 5 }}>
-            <History size={22} /> {isMobile ? "" : "السجل"}
-          </button>
-          <button onClick={() => setShowLogs("stats")} title="الإحصائيات" style={{ background: "#0f172a", border: "1px solid #a855f7", padding: 11, borderRadius: 14, cursor: "pointer", color: "#a855f7", display: "flex", alignItems: "center", gap: 5 }}>
-            <BarChart2 size={22} /> {isMobile ? "" : "الإحصاء"}
-          </button>
-          <button onClick={() => setShowFiles(true)} title="الملفات المهمة" style={{ background: "#0f172a", border: "1px solid #3b82f6", padding: 11, borderRadius: 14, cursor: "pointer", color: "#bfdbfe", display: "flex", alignItems: "center", gap: 5 }}>
-            <FileText size={22} color="#3b82f6" /> {isMobile ? "" : "الملفات"}
-          </button>
-          <button onClick={() => setShowSystemPanel(true)} title="النظام" style={{ background: "#0f172a", border: "1px solid #10b981", padding: 11, borderRadius: 14, cursor: "pointer", color: "#10b981", display: "flex", alignItems: "center", gap: 5 }}>
-            <Database size={22} /> {isMobile ? "" : "النظام"}
-          </button>
+          {user?.role === "manager" && (
+            <button onClick={() => setShowAgenda(true)} title="جدول الأعمال" style={{ background: "#2e1065", border: "1px solid #a855f7", padding: 11, borderRadius: 14, cursor: "pointer", color: "#d8b4fe", display: "flex", alignItems: "center", gap: 5 }}>
+              <Calendar size={22} /> {isMobile ? "" : "الجدول"}
+            </button>
+          )}
+          {user?.role === "manager" && (
+            <>
+              <button onClick={() => setShowLogs("logs")} title="سجل الطلبات" style={{ background: "#1e3a8a", border: "1px solid #3b82f6", padding: 11, borderRadius: 14, cursor: "pointer", color: "#bfdbfe", display: "flex", alignItems: "center", gap: 5 }}>
+                <History size={22} /> {isMobile ? "" : "السجل"}
+              </button>
+              <button onClick={() => setShowLogs("stats")} title="الإحصائيات" style={{ background: "#0f172a", border: "1px solid #a855f7", padding: 11, borderRadius: 14, cursor: "pointer", color: "#a855f7", display: "flex", alignItems: "center", gap: 5 }}>
+                <BarChart2 size={22} /> {isMobile ? "" : "الإحصاء"}
+              </button>
+              <button onClick={() => setShowFiles(true)} title="الملفات المهمة" style={{ background: "#0f172a", border: "1px solid #3b82f6", padding: 11, borderRadius: 14, cursor: "pointer", color: "#bfdbfe", display: "flex", alignItems: "center", gap: 5 }}>
+                <FileText size={22} color="#3b82f6" /> {isMobile ? "" : "الملفات"}
+              </button>
+              <button onClick={() => setShowSystemPanel(true)} title="النظام" style={{ background: "#0f172a", border: "1px solid #10b981", padding: 11, borderRadius: 14, cursor: "pointer", color: "#10b981", display: "flex", alignItems: "center", gap: 5 }}>
+                <Database size={22} /> {isMobile ? "" : "النظام"}
+              </button>
+            </>
+          )}
         </div>
 
-        {/* بطاقات الأقسام */}
+        {/* الأقسام الأساسية (السكرتارية، المكتب، المطبخ) - للمدير فقط */}
+        {user?.role === 'manager' && (
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 28, width: "100%", marginBottom: 28 }}>
+            {[...sections].filter(s => [2, 4, 3].includes(s.id)).sort((a, b) => {
+              const order = ["قسم السكرتارية", "إدارة المكتب", "خدمات المطبخ"];
+              let idxA = order.indexOf(a.title);
+              let idxB = order.indexOf(b.title);
+              if (idxA === -1) idxA = 99;
+              if (idxB === -1) idxB = 99;
+              return idxA - idxB;
+            }).map(s => (
+              <div key={s.id} style={{
+                backgroundColor: "#1e293b", padding: 28, borderRadius: 32,
+                border: "1px solid #334155", boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
+                display: "flex", flexDirection: "column",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 22, borderBottom: `2px solid ${s.color}44`, paddingBottom: 14 }}>
+                  <div style={{ display: "flex" }}>{getIcon(s.iconName, 32, s.color)}</div>
+                  <h2 style={{ fontSize: "1.6rem", margin: 0, color: "#fff", fontWeight: 800 }}>{s.title}</h2>
+                  <div style={{ width: 9, height: 9, borderRadius: "50%", backgroundColor: roomOnline[s.id] ? "#22c55e" : "#475569", marginRight: "auto", ...(roomOnline[s.id] ? { boxShadow: "0 0 8px #22c55e" } : {}) }} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+                  {s.actions.map(act => (
+                    <button key={act} onClick={() => sendOrder(s.id, act, s.title)} style={{
+                      backgroundColor: "#0f172a", color: "#fff", border: "1px solid #334155",
+                      padding: "17px 10px", borderRadius: 16, cursor: "pointer", fontWeight: "bold",
+                      fontSize: "1rem", transition: "all 0.25s", fontFamily: "inherit",
+                    }}
+                      onMouseEnter={e => { e.currentTarget.style.backgroundColor = s.color + "22"; e.currentTarget.style.borderColor = s.color; }}
+                      onMouseLeave={e => { e.currentTarget.style.backgroundColor = "#0f172a"; e.currentTarget.style.borderColor = "#334155"; }}>
+                      {act}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 8, backgroundColor: "#0f172a", padding: "8px 12px", borderRadius: 18, border: `1px dashed ${s.color}55`, alignItems: "center", flexWrap: "wrap" }}>
+                  {recordingId === s.id ? (
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, color: "#ef4444", fontWeight: "bold", fontSize: "1.1rem", padding: "5px" }}>
+                      <div style={{ width: 12, height: 12, backgroundColor: "#ef4444", borderRadius: "50%", animation: "pulseDot 1.5s infinite" }} />
+                      جاري التسجيل... {Math.floor(recordingSeconds / 60).toString().padStart(2, "0")}:{(recordingSeconds % 60).toString().padStart(2, "0")}
+                    </div>
+                  ) : (
+                    <input type="text" placeholder="نداء مخصص..."
+                      value={customMsgs[s.id] || ""}
+                      onChange={e => setCustomMsgs(p => ({ ...p, [s.id]: e.target.value }))}
+                      onKeyDown={e => e.key === "Enter" && sendOrder(s.id, customMsgs[s.id], s.title)}
+                      style={{ flex: 1, backgroundColor: "transparent", border: "none", color: "white", padding: "7px", fontSize: "0.95rem", outline: "none", minWidth: 100, fontFamily: "inherit" }} />
+                  )}
+                  {!recordingId && (
+                    <button onClick={() => sendOrder(s.id, customMsgs[s.id], s.title)} style={{
+                      backgroundColor: s.color, color: "white", border: "none",
+                      borderRadius: 11, padding: "9px 14px", display: "flex", cursor: "pointer", flexShrink: 0
+                    }}>
+                      <Send size={16} />
+                    </button>
+                  )}
+                  <button onClick={() => toggleRecording(s.id, s.title)} style={{
+                    backgroundColor: recordingId === s.id ? "#ef4444" : "#475569", color: "white", border: "none",
+                    borderRadius: 11, padding: "9px 14px", display: "flex", cursor: "pointer", transition: "0.2s", flexShrink: 0
+                  }} title="تسجيل بصمة صوتية">
+                    {recordingId === s.id ? <Square size={16} /> : <Mic size={16} />}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* بطاقات مساعدة ومعاونين */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 28, width: "100%" }}>
-          {[...sections].sort((a, b) => {
-            const order = ["قسم السكرتارية", "إدارة المكتب", "خدمات المطبخ"];
+          {[...sections].filter(s => {
+            if (user?.role === 'manager') return [5, 7].includes(s.id);
+            if (user?.role === 'deputy-tech') return [0, 6].includes(s.id);
+            if (user?.role === 'deputy-admin') return [0, 8].includes(s.id);
+            return false;
+          }).sort((a, b) => {
+            const order = ["معاون المدير العام للشؤون الفنية", "معاون المدير العام للشؤون الادارية والمالية", "المدير العام", "ادارة المكتب الخاص به (فني)", "ادارة المكتب الخاص به (اداري)"];
             let idxA = order.indexOf(a.title);
             let idxB = order.indexOf(b.title);
             if (idxA === -1) idxA = 99;
@@ -2321,12 +2422,113 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
               </div>
             </div>
           ))}
+
+          {/* بطاقة مراسلة الأقسام الأخرى من خلال قائمة منسدلة */}
+          <div style={{
+            backgroundColor: "#1e293b", padding: 28, borderRadius: 32,
+            border: "2px dashed #3b82f6", boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
+            display: "flex", flexDirection: "column",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 22, borderBottom: `2px solid #3b82f644`, paddingBottom: 14 }}>
+              <div style={{ display: "flex" }}><Briefcase size={32} color="#3b82f6" /></div>
+              <h2 style={{ fontSize: "1.6rem", margin: 0, color: "#fff", fontWeight: 800 }}>مراسلة كافة الأقسام والمديريات</h2>
+            </div>
+
+            <div style={{ marginBottom: 15 }}>
+              <select
+                value={customMsgs['generic_dep_id'] || ""}
+                onChange={e => setCustomMsgs(p => ({ ...p, generic_dep_id: e.target.value }))}
+                style={{ width: "100%", padding: "12px", borderRadius: "14px", backgroundColor: "#0f172a", color: "white", border: "1px solid #334155", fontFamily: "inherit", fontSize: "1.1rem" }}>
+                <option value="" disabled>-- اختر القسم أو المديرية --</option>
+                {[...sections].filter(s => s.id >= 9 && s.id <= 33).sort((a, b) => a.title.localeCompare(b.title)).map(s => (
+                  <option key={s.id} value={s.id}>{s.title}{roomOnline[s.id] ? " 🟢" : ""}</option>
+                ))}
+              </select>
+              {/* مؤشر الاتصال يظهر فقط إذا كان القسم متصلاً */}
+              {customMsgs['generic_dep_id'] && roomOnline[parseInt(customMsgs['generic_dep_id'])] && (
+                <div style={{ marginTop: 6, fontSize: "0.82rem", color: "#22c55e", display: "flex", alignItems: "center", gap: 5, paddingRight: 4 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: "#22c55e", display: "inline-block", boxShadow: "0 0 6px #22c55e" }} />
+                  القسم متصل حالياً
+                </div>
+              )}
+            </div>
+
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+              {["يرجى الحضور", "لإجراء اللازم", "مذكرة جاهزة", "طلب تقرير"].map(act => (
+                <button key={act} onClick={() => {
+                  const targetId = parseInt(customMsgs['generic_dep_id']);
+                  if (!targetId) return showToast("يرجى اختيار القسم أولاً من القائمة", "error");
+                  const targetTitle = sections.find(s => s.id === targetId)?.title || "القسم";
+                  sendOrder(targetId, act, targetTitle);
+                }} style={{
+                  backgroundColor: "#0f172a", color: "#fff", border: "1px solid #334155",
+                  padding: "12px 10px", borderRadius: 16, cursor: "pointer", fontWeight: "bold",
+                  fontSize: "0.95rem", transition: "all 0.25s", fontFamily: "inherit",
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = "#3b82f622"; e.currentTarget.style.borderColor = "#3b82f6"; }}
+                  onMouseLeave={e => { e.currentTarget.style.backgroundColor = "#0f172a"; e.currentTarget.style.borderColor = "#334155"; }}>
+                  {act}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, backgroundColor: "#0f172a", padding: "8px 12px", borderRadius: 18, border: `1px dashed #3b82f655`, alignItems: "center", flexWrap: "wrap" }}>
+              {recordingId === parseInt(customMsgs['generic_dep_id']) && recordingId >= 9 ? (
+                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, color: "#ef4444", fontWeight: "bold", fontSize: "1.1rem", padding: "5px" }}>
+                  <div style={{ width: 12, height: 12, backgroundColor: "#ef4444", borderRadius: "50%", animation: "pulseDot 1.5s infinite" }} />
+                  جاري التسجيل... {Math.floor(recordingSeconds / 60).toString().padStart(2, "0")}:{(recordingSeconds % 60).toString().padStart(2, "0")}
+                </div>
+              ) : (
+                <input type="text" placeholder="نداء مخصص..."
+                  value={customMsgs['generic_dep'] || ""}
+                  onChange={e => setCustomMsgs(p => ({ ...p, 'generic_dep': e.target.value }))}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      const targetId = parseInt(customMsgs['generic_dep_id']);
+                      if (!targetId) return showToast("يرجى اختيار القسم أولاً", "error");
+                      const targetTitle = sections.find(s => s.id === targetId)?.title || "";
+                      sendOrder(targetId, customMsgs['generic_dep'], targetTitle);
+                      setCustomMsgs(p => ({ ...p, 'generic_dep': "" }));
+                    }
+                  }}
+                  style={{ flex: 1, backgroundColor: "transparent", border: "none", color: "white", padding: "7px", fontSize: "0.95rem", outline: "none", minWidth: 100, fontFamily: "inherit" }} />
+              )}
+              {(!recordingId || recordingId < 9) && (
+                <button onClick={() => {
+                  const targetId = parseInt(customMsgs['generic_dep_id']);
+                  if (!targetId) return showToast("يرجى اختيار القسم أولاً", "error");
+                  const targetTitle = sections.find(s => s.id === targetId)?.title || "";
+                  sendOrder(targetId, customMsgs['generic_dep'], targetTitle);
+                  setCustomMsgs(p => ({ ...p, 'generic_dep': "" }));
+                }} style={{
+                  backgroundColor: "#3b82f6", color: "white", border: "none",
+                  borderRadius: 11, padding: "9px 14px", display: "flex", cursor: "pointer", flexShrink: 0
+                }}>
+                  <Send size={16} />
+                </button>
+              )}
+              <button onClick={() => {
+                const targetId = parseInt(customMsgs['generic_dep_id']);
+                if (!targetId) return showToast("يرجى اختيار القسم أولاً لتسجيل الصوت", "error");
+                const targetTitle = sections.find(s => s.id === targetId)?.title || "القسم";
+                toggleRecording(targetId, targetTitle);
+              }} style={{
+                backgroundColor: recordingId === parseInt(customMsgs['generic_dep_id']) && recordingId >= 9 ? "#ef4444" : "#475569", color: "white", border: "none",
+                borderRadius: 11, padding: "9px 14px", display: "flex", cursor: "pointer", transition: "0.2s", flexShrink: 0
+              }} title="تسجيل بصمة صوتية للقسم">
+                {recordingId === parseInt(customMsgs['generic_dep_id']) && recordingId >= 9 ? <Square size={16} /> : <Mic size={16} />}
+              </button>
+            </div>
+          </div>
         </div>
+
 
         {/* نافذة الإعدادات */}
         {showSettings && (
           <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(2,6,23,0.96)", zIndex: 10001, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "80px 15px 20px", overflowY: "auto" }}>
-            <div style={{ backgroundColor: "#1e293b", width: "100%", maxWidth: 660, borderRadius: 28, padding: 30, border: "1px solid #334155" }}>
+            <div style={{ backgroundColor: "#1e293b", width: "100%", maxWidth: 1000, borderRadius: 28, padding: 30, border: "1px solid #334155" }}>
+
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
                 <h2 style={{ color: "white", margin: 0 }}>تخصيص الإعدادات</h2>
                 <X onClick={() => setShowSettings(false)} style={{ cursor: "pointer", color: "#94a3b8" }} />
@@ -2353,28 +2555,31 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
               </div>
 
               <h3 style={{ color: "white", marginTop: 0, marginBottom: 15 }}>تخصيص أزرار الأقسام</h3>
-              {sections.map(section => (
-                <div key={section.id} style={{ marginBottom: 22, padding: 14, border: "1px solid #334155", borderRadius: 18 }}>
-                  <h3 style={{ color: section.color, marginTop: 0 }}>{section.title}</h3>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 9, marginBottom: 13 }}>
-                    {section.actions.map((action, index) => (
-                      <div key={index} style={{ background: "#0f172a", color: "white", padding: "7px 11px", borderRadius: 9, display: "flex", alignItems: "center", gap: 7 }}>
-                        {action}
-                        <Trash2 size={13} color="#ef4444" style={{ cursor: "pointer" }} onClick={() => removeAction(section.id, index)} />
-                      </div>
-                    ))}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 16 }}>
+                {sections.map(section => (
+                  <div key={section.id} style={{ marginBottom: 8, padding: 14, border: "1px solid #334155", borderRadius: 18 }}>
+                    <h3 style={{ color: section.color, marginTop: 0 }}>{section.title}</h3>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 9, marginBottom: 13 }}>
+                      {section.actions.map((action, index) => (
+                        <div key={index} style={{ background: "#0f172a", color: "white", padding: "7px 11px", borderRadius: 9, display: "flex", alignItems: "center", gap: 7 }}>
+                          {action}
+                          <Trash2 size={13} color="#ef4444" style={{ cursor: "pointer" }} onClick={() => removeAction(section.id, index)} />
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", gap: 9 }}>
+                      <input type="text" id={`new-act-${section.id}`} placeholder="اسم الزر الجديد..."
+                        style={{ flex: 1, background: "#0f172a", border: "none", color: "white", padding: "9px", borderRadius: 9, fontFamily: "inherit" }}
+                        onKeyDown={e => { if (e.key === "Enter") { addAction(section.id, e.target.value); e.target.value = ""; } }} />
+                      <button onClick={() => { const i = document.getElementById(`new-act-${section.id}`); addAction(section.id, i.value); i.value = ""; }}
+                        style={{ background: "#22c55e", border: "none", padding: "9px", borderRadius: 9, color: "white", cursor: "pointer" }}>
+                        <Plus size={19} />
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ display: "flex", gap: 9 }}>
-                    <input type="text" id={`new-act-${section.id}`} placeholder="اسم الزر الجديد..."
-                      style={{ flex: 1, background: "#0f172a", border: "none", color: "white", padding: "9px", borderRadius: 9, fontFamily: "inherit" }}
-                      onKeyDown={e => { if (e.key === "Enter") { addAction(section.id, e.target.value); e.target.value = ""; } }} />
-                    <button onClick={() => { const i = document.getElementById(`new-act-${section.id}`); addAction(section.id, i.value); i.value = ""; }}
-                      style={{ background: "#22c55e", border: "none", padding: "9px", borderRadius: 9, color: "white", cursor: "pointer" }}>
-                      <Plus size={19} />
-                    </button>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
+
               <button onClick={() => setShowSettings(false)} style={{ width: "100%", padding: 14, borderRadius: 14, background: "#3b82f6", color: "white", border: "none", fontWeight: "bold", cursor: "pointer", fontFamily: "inherit" }}>
                 حفظ وإغلاق
               </button>
@@ -2390,7 +2595,7 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
 // واجهة القسم (المستقبل)
 // ══════════════════════════════════════════════════════════════════════════════
 
-const Receiver = ({ title, roomId, icon, color, user, onLogout, isManagerBusy }) => {
+const Receiver = ({ title, roomId, icon, color, user, onLogout, isManagerBusy, managerRoomId = 0, managerTitle = "المدير العام" }) => {
   const isMobile = useIsMobile();
   const [notifications, setNotifications] = useState([]);
   const [showModal, setShowModal] = useState(true);
@@ -2402,6 +2607,9 @@ const Receiver = ({ title, roomId, icon, color, user, onLogout, isManagerBusy })
   const [showFiles, setShowFiles] = useState(false);
   const [connected, setConnected] = useState(socket.connected);
   const [effectiveConnected, setEffectiveConnected] = useState(socket.connected);
+  // eslint-disable-next-line no-unused-vars
+  const [selectedManagerRoomId, setSelectedManagerRoomId] = useState(managerRoomId === null ? 0 : managerRoomId);
+
 
   // تحديث الحالة الفعالة لمنع التذبذب البصري
   useEffect(() => {
@@ -2412,9 +2620,9 @@ const Receiver = ({ title, roomId, icon, color, user, onLogout, isManagerBusy })
     }
   }, [connected]);
   const [toast, setToast] = useState({ visible: false, msg: "", type: "info" });
-  const [receiverActions, setReceiverActions] = useState([]);
-  const [customActionMsg, setCustomActionMsg] = useState("");
-  const [isRecording, setIsRecording] = useState(false);
+  const [receiverActions, setReceiverActions] = useState({ 0: [], 5: [], 7: [] });
+  const [customActionMsgs, setCustomActionMsgs] = useState({});
+  const [recordingTargetId, setRecordingTargetId] = useState(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const recordingIntervalRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -2463,7 +2671,9 @@ const Receiver = ({ title, roomId, icon, color, user, onLogout, isManagerBusy })
     authFetch(`/api/receiver-settings/${roomId}`)
       .then(r => r.ok ? r.json() : { actions: [], sound_url: null })
       .then(data => {
-        setReceiverActions(data.actions || []);
+        let loaded = data.actions || [];
+        if (Array.isArray(loaded)) loaded = { 0: loaded, 5: [], 7: [] };
+        setReceiverActions(loaded);
         if (data.sound_url) {
           setSelectedSound(data.sound_url);
           localStorage.setItem(`app_sound_${roomId}`, data.sound_url);
@@ -2523,8 +2733,12 @@ const Receiver = ({ title, roomId, icon, color, user, onLogout, isManagerBusy })
 
     socket.on("receive-notification", handleReceive);
 
-    const handleAuthError = () => onLogout();
+    const handleAuthError = (err) => {
+      // لا نُسجّل الخروج تلقائياً بسبب خطأ في غرفة Socket
+      console.warn("Auth error (socket):", err?.message || err);
+    };
     socket.on("auth-error", handleAuthError);
+
 
     const handleServerError = ({ message }) => showToast(message || "حدث خطأ غير معروف", "error");
     socket.on("error", handleServerError);
@@ -2600,28 +2814,31 @@ const Receiver = ({ title, roomId, icon, color, user, onLogout, isManagerBusy })
     if (n.logId) socket.emit("update-notification-status", { logId: n.logId, status: "completed" });
   };
 
-  const sendToManager = (msg) => {
+  const sendToManager = (msg, overrideTargetId = null) => {
     if (isManagerBusy) {
       showToast("عذراً، المدير مشغول حالياً ولا يستقبل أي طلبات ", "error");
       return;
     }
-    if (!msg.trim()) return;
+    if (!msg?.trim()) return;
+    const finalTargetId = overrideTargetId !== null ? overrideTargetId : managerRoomId;
     socket.emit("send-to-manager", {
       fromRoomId: roomId,
       fromName: title,
       message: msg,
+      targetRoomId: finalTargetId,
     });
-    setCustomActionMsg("");
+    setCustomActionMsgs(p => ({ ...p, [finalTargetId]: "" }));
     showToast("تم إرسال الطلب للمدير ✅", "success");
   };
 
-  const toggleRecording = async () => {
-    if (isRecording) {
+  const toggleRecording = async (overrideTargetId = null) => {
+    const finalTargetId = overrideTargetId !== null ? overrideTargetId : managerRoomId;
+    if (recordingTargetId === finalTargetId) {
       if (mediaRecorderRef.current) {
         mediaRecorderRef.current.stop();
         if (mediaRecorderRef.current.stream) mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
       }
-      setIsRecording(false);
+      setRecordingTargetId(null);
     } else {
       if (isManagerBusy) {
         showToast("عذراً، المدير في اجتماع ولا يستقبل أي طلبات حالياً", "error");
@@ -2650,9 +2867,9 @@ const Receiver = ({ title, roomId, icon, color, user, onLogout, isManagerBusy })
             const base64Audio = reader.result;
             socket.emit("send-to-manager", {
               fromRoomId: roomId, fromName: title,
-              message: "بصمة صوتية 🎤", audio: base64Audio
+              message: "بصمة صوتية 🎤", audio: base64Audio, targetRoomId: finalTargetId
             });
-            showToast("تم إرسال البصمة للمدير ✅", "success");
+            showToast("تم إرسال البصمة للجهة المحددة ✅", "success");
           };
         };
 
@@ -2668,13 +2885,15 @@ const Receiver = ({ title, roomId, icon, color, user, onLogout, isManagerBusy })
             return p + 1;
           });
         }, 1000);
-        setIsRecording(true);
-      } catch (err) {
+        setRecordingTargetId(finalTargetId);
+      } catch { /* microphone access denied */
         showToast("فشل الوصل للميكروفون، يرجى السماح له", "error");
       }
+
     }
   };
 
+  // eslint-disable-next-line no-unused-vars
   const addReceiverAction = (actionName) => {
     if (!actionName.trim()) return;
     const updated = [...receiverActions, actionName];
@@ -2682,11 +2901,13 @@ const Receiver = ({ title, roomId, icon, color, user, onLogout, isManagerBusy })
     socket.emit("update-receiver-actions", { roomId, actions: updated });
   };
 
+  // eslint-disable-next-line no-unused-vars
   const removeReceiverAction = (index) => {
     const updated = receiverActions.filter((_, i) => i !== index);
     setReceiverActions(updated);
     socket.emit("update-receiver-actions", { roomId, actions: updated });
   };
+
 
   if (!authorized) {
     return (
@@ -2733,10 +2954,11 @@ const Receiver = ({ title, roomId, icon, color, user, onLogout, isManagerBusy })
                   }
                   // تفعيل نظام النبض الصامت للقسم لإيقاظ التنبيهات في الخلفية
                   startSilentKeepAlive(() => {
-                    performHeartbeat((data) => {
+                    performHeartbeat(() => {
                       loadReceiverNotifications();
                     });
                   });
+
 
                   const handleVisibility = () => {
                     if (document.visibilityState === "visible") {
@@ -2786,6 +3008,10 @@ const Receiver = ({ title, roomId, icon, color, user, onLogout, isManagerBusy })
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
+              <button onClick={() => setShowSettings(true)} style={{ background: "#0f172a", color: "#bfdbfe", border: "1px solid #3b82f6", padding: "10px 16px", borderRadius: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, fontWeight: "bold", fontFamily: "inherit" }}>
+                <Settings size={20} />
+                <span style={{ display: isMobile ? "none" : "inline" }}>تخصيص الأزرار</span>
+              </button>
               <button onClick={() => setShowLogs(true)} style={{ background: "#1e3a8a", color: "#bfdbfe", border: "1px solid #3b82f6", padding: "10px 16px", borderRadius: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, fontWeight: "bold", fontFamily: "inherit" }}>
                 <History size={20} />
                 <span style={{ display: isMobile ? "none" : "inline" }}>سجل الطلبات</span>
@@ -2815,7 +3041,7 @@ const Receiver = ({ title, roomId, icon, color, user, onLogout, isManagerBusy })
           {/* نافذة تخصيص إعدادات الأقسام */}
           {showSettings && (
             <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(2,6,23,0.96)", zIndex: 10001, display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "80px 15px 20px", overflowY: "auto" }}>
-              <div style={{ backgroundColor: "#1e293b", width: "100%", maxWidth: 660, borderRadius: 28, padding: 30, border: "1px solid #334155" }}>
+              <div style={{ backgroundColor: "#1e293b", width: "100%", maxWidth: 920, borderRadius: 28, padding: 30, border: "1px solid #334155" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
                   <h2 style={{ color: "white", margin: 0 }}>تخصيص الإعدادات للقسم</h2>
                   <X onClick={() => setShowSettings(false)} style={{ cursor: "pointer", color: "#94a3b8" }} />
@@ -2841,92 +3067,206 @@ const Receiver = ({ title, roomId, icon, color, user, onLogout, isManagerBusy })
                   </div>
                 </div>
 
-                <h3 style={{ color: "white", marginTop: 0, marginBottom: 15 }}>تخصيص الأزرار السريعة للمدير</h3>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 9, marginBottom: 20 }}>
-                  {receiverActions.map((action, index) => (
-                    <div key={index} style={{ background: "#0f172a", color: "white", padding: "7px 11px", borderRadius: 9, display: "flex", alignItems: "center", gap: 7 }}>
-                      {action}
-                      <Trash2 size={13} color="#ef4444" style={{ cursor: "pointer" }} onClick={() => {
-                        const newActions = receiverActions.filter((_, i) => i !== index);
-                        setReceiverActions(newActions);
-                        socket.emit("update-receiver-settings", { roomId, actions: newActions });
-                      }} />
+                {managerRoomId === null ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 16 }}>
+                    {[
+                      { id: 0, label: "المدير العام" },
+                      { id: 5, label: "معاون المدير العام الفني" },
+                      { id: 7, label: "معاون المدير العام الاداري" }
+                    ].map(target => (
+                      <div key={target.id} style={{ marginBottom: 4, padding: 15, border: "1px dashed #334155", borderRadius: 14, backgroundColor: "#0f172a" }}>
+                        <h4 style={{ color: "white", marginTop: 0, marginBottom: 10 }}>أزرار السريعة - {target.label}</h4>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 9, marginBottom: 15 }}>
+                          {(receiverActions[target.id] || []).map((action, index) => (
+                            <div key={index} style={{ background: "#1e293b", color: "white", padding: "7px 11px", borderRadius: 9, display: "flex", alignItems: "center", gap: 7 }}>
+                              {action}
+                              <Trash2 size={13} color="#ef4444" style={{ cursor: "pointer" }} onClick={() => {
+                                const newActions = { ...receiverActions, [target.id]: (receiverActions[target.id] || []).filter((_, i) => i !== index) };
+                                setReceiverActions(newActions);
+                                socket.emit("update-receiver-settings", { roomId, actions: newActions });
+                              }} />
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ display: "flex", gap: 9 }}>
+                          <input type="text" id={`new-rec-act-${target.id}`} placeholder={`زر جديد لـ ${target.label}...`} style={{ flex: 1, background: "#1e293b", border: "1px solid #334155", color: "white", padding: "10px", borderRadius: 10, fontFamily: "inherit", outline: "none" }} onKeyDown={e => {
+                            if (e.key === "Enter") {
+                              const val = e.target.value.trim();
+                              if (val) {
+                                const newActions = { ...receiverActions, [target.id]: [...(receiverActions[target.id] || []), val] };
+                                setReceiverActions(newActions);
+                                socket.emit("update-receiver-settings", { roomId, actions: newActions });
+                                e.target.value = "";
+                              }
+                            }
+                          }} />
+                          <button onClick={() => {
+                            const i = document.getElementById(`new-rec-act-${target.id}`);
+                            const val = i.value.trim();
+                            if (val) {
+                              const newActions = { ...receiverActions, [target.id]: [...(receiverActions[target.id] || []), val] };
+                              setReceiverActions(newActions);
+                              socket.emit("update-receiver-settings", { roomId, actions: newActions });
+                              i.value = "";
+                            }
+                          }} style={{ background: "#22c55e", border: "none", padding: "10px 15px", borderRadius: 10, color: "white", cursor: "pointer" }}><Plus size={19} /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ marginBottom: 20 }}>
+                    <h3 style={{ color: "white", marginTop: 0, marginBottom: 15 }}>تخصيص الأزرار السريعة للمدير</h3>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 9, marginBottom: 20 }}>
+                      {(receiverActions[managerRoomId] || []).map((action, index) => (
+                        <div key={index} style={{ background: "#0f172a", color: "white", padding: "7px 11px", borderRadius: 9, display: "flex", alignItems: "center", gap: 7 }}>
+                          {action}
+                          <Trash2 size={13} color="#ef4444" style={{ cursor: "pointer" }} onClick={() => {
+                            const newActions = { ...receiverActions, [managerRoomId]: (receiverActions[managerRoomId] || []).filter((_, i) => i !== index) };
+                            setReceiverActions(newActions);
+                            socket.emit("update-receiver-settings", { roomId, actions: newActions });
+                          }} />
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-                <div style={{ display: "flex", gap: 9, marginBottom: 20 }}>
-                  <input type="text" id="new-rec-act" placeholder="اسم الزر الجديد..." style={{ flex: 1, background: "#0f172a", border: "none", color: "white", padding: "10px", borderRadius: 10, fontFamily: "inherit" }} onKeyDown={e => {
-                    if (e.key === "Enter") {
-                      const val = e.target.value.trim();
-                      if (val) {
-                        const newActions = [...receiverActions, val];
-                        setReceiverActions(newActions);
-                        socket.emit("update-receiver-settings", { roomId, actions: newActions });
-                        e.target.value = "";
-                      }
-                    }
-                  }} />
-                  <button onClick={() => {
-                    const i = document.getElementById("new-rec-act");
-                    const val = i.value.trim();
-                    if (val) {
-                      const newActions = [...receiverActions, val];
-                      setReceiverActions(newActions);
-                      socket.emit("update-receiver-settings", { roomId, actions: newActions });
-                      i.value = "";
-                    }
-                  }} style={{ background: "#22c55e", border: "none", padding: "10px 15px", borderRadius: 10, color: "white", cursor: "pointer" }}><Plus size={19} /></button>
-                </div>
+                    <div style={{ display: "flex", gap: 9, marginBottom: 20 }}>
+                      <input type="text" id="new-rec-act" placeholder="اسم الزر الجديد..." style={{ flex: 1, background: "#0f172a", border: "none", color: "white", padding: "10px", borderRadius: 10, fontFamily: "inherit" }} onKeyDown={e => {
+                        if (e.key === "Enter") {
+                          const val = e.target.value.trim();
+                          if (val) {
+                            const newActions = { ...receiverActions, [managerRoomId]: [...(receiverActions[managerRoomId] || []), val] };
+                            setReceiverActions(newActions);
+                            socket.emit("update-receiver-settings", { roomId, actions: newActions });
+                            e.target.value = "";
+                          }
+                        }
+                      }} />
+                      <button onClick={() => {
+                        const i = document.getElementById("new-rec-act");
+                        const val = i.value.trim();
+                        if (val) {
+                          const newActions = { ...receiverActions, [managerRoomId]: [...(receiverActions[managerRoomId] || []), val] };
+                          setReceiverActions(newActions);
+                          socket.emit("update-receiver-settings", { roomId, actions: newActions });
+                          i.value = "";
+                        }
+                      }} style={{ background: "#22c55e", border: "none", padding: "10px 15px", borderRadius: 10, color: "white", cursor: "pointer" }}><Plus size={19} /></button>
+                    </div>
+                  </div>
+                )}
                 <button onClick={() => setShowSettings(false)} style={{ width: "100%", padding: 14, borderRadius: 14, background: "#3b82f6", color: "white", border: "none", fontWeight: "bold", cursor: "pointer", fontFamily: "inherit" }}>إغلاق</button>
               </div>
             </div>
           )}
 
           {/* واجهة إرسال للمدير */}
-          <div style={{ backgroundColor: "#1e293b", padding: 25, borderRadius: 28, border: `1px solid ${color}44`, marginBottom: 25 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}>
-              <h3 style={{ color: "white", margin: 0, fontSize: "1.4rem" }}>إرسال إلى المدير العام</h3>
-              <button onClick={() => setShowSettings(true)} style={{ background: "transparent", color: "#94a3b8", border: "none", cursor: "pointer" }}><Settings size={22} /></button>
+          {managerRoomId === null ? (
+            <div style={{ width: "100%", marginBottom: 35 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 28, width: "100%" }}>
+                {[
+                  { id: 0, label: "المدير العام", color: "#3b82f6", icon: <Briefcase size={32} color="#3b82f6" /> },
+                  { id: 5, label: "معاون المدير العام الفني", color: "#10b981", icon: <User size={32} color="#10b981" /> },
+                  { id: 7, label: "معاون المدير العام الاداري", color: "#f43f5e", icon: <User size={32} color="#f43f5e" /> }
+                ].map(target => (
+                  <div key={target.id} style={{
+                    backgroundColor: "#1e293b", padding: 28, borderRadius: 32,
+                    border: "1px solid #334155", boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
+                    display: "flex", flexDirection: "column",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 22, borderBottom: `2px solid ${target.color}44`, paddingBottom: 14 }}>
+                      <div style={{ display: "flex" }}>{target.icon}</div>
+                      <h2 style={{ fontSize: "1.6rem", margin: 0, color: "#fff", fontWeight: 800 }}>{target.label}</h2>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+                      {(receiverActions[target.id] || []).map((act, i) => (
+                        <button key={i} onClick={() => sendToManager(act, target.id)} style={{
+                          backgroundColor: "#0f172a", color: "white", border: "1px solid #334155",
+                          padding: "17px 10px", borderRadius: 16, cursor: "pointer", fontWeight: "bold",
+                          fontSize: "1rem", transition: "all 0.25s", fontFamily: "inherit",
+                        }}
+                          onMouseEnter={e => { e.currentTarget.style.backgroundColor = target.color + "22"; e.currentTarget.style.borderColor = target.color; }}
+                          onMouseLeave={e => { e.currentTarget.style.backgroundColor = "#0f172a"; e.currentTarget.style.borderColor = "#334155"; }}
+                        >
+                          {act}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", gap: 8, backgroundColor: "#0f172a", padding: "8px 12px", borderRadius: 18, border: `1px dashed ${target.color}55`, alignItems: "center", flexWrap: "wrap", marginTop: "auto" }}>
+                      {recordingTargetId === target.id ? (
+                        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, color: "#ef4444", fontWeight: "bold", fontSize: "1.1rem", padding: "5px" }}>
+                          <div style={{ width: 12, height: 12, backgroundColor: "#ef4444", borderRadius: "50%", animation: "pulseDot 1.5s infinite" }} />
+                          جاري التسجيل... {Math.floor(recordingSeconds / 60).toString().padStart(2, "0")}:{(recordingSeconds % 60).toString().padStart(2, "0")}
+                        </div>
+                      ) : (
+                        <input type="text" placeholder="نداء مخصص..."
+                          value={customActionMsgs[target.id] || ""}
+                          onChange={e => setCustomActionMsgs(p => ({ ...p, [target.id]: e.target.value }))}
+                          onKeyDown={e => e.key === "Enter" && sendToManager(customActionMsgs[target.id], target.id)}
+                          style={{ flex: 1, backgroundColor: "transparent", border: "none", color: "white", padding: "7px", fontSize: "0.95rem", outline: "none", fontFamily: "inherit", minWidth: 100 }} />
+                      )}
+                      {recordingTargetId !== target.id && (
+                        <button onClick={() => sendToManager(customActionMsgs[target.id], target.id)} style={{ backgroundColor: target.color, color: "white", border: "none", borderRadius: 11, padding: "9px 14px", display: "flex", cursor: "pointer", flexShrink: 0 }}>
+                          <Send size={16} />
+                        </button>
+                      )}
+                      <button onClick={() => toggleRecording(target.id)} style={{
+                        backgroundColor: recordingTargetId === target.id ? "#ef4444" : "#475569", color: "white", border: "none",
+                        borderRadius: 11, padding: "9px 14px", display: "flex", cursor: "pointer", transition: "0.2s", flexShrink: 0
+                      }} title="تسجيل بصمة صوتية">
+                        {recordingTargetId === target.id ? <Square size={16} /> : <Mic size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 15 }}>
-              {receiverActions.map((act, i) => (
-                <button key={i} onClick={() => sendToManager(act)} style={{
-                  backgroundColor: "#0f172a", color: "white", border: `1px solid ${color}55`,
-                  padding: "12px 20px", borderRadius: 16, cursor: "pointer", fontWeight: "bold",
-                  fontSize: "1rem"
-                }}>
-                  {act}
-                </button>
-              ))}
+          ) : (
+            <div style={{ backgroundColor: "#1e293b", padding: 25, borderRadius: 28, border: `1px solid ${color}44`, marginBottom: 25 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 15, flexWrap: "wrap", gap: 10 }}>
+                <h3 style={{ color: "white", margin: 0, fontSize: "1.4rem" }}>
+                  إرسال إلى {managerTitle}
+                </h3>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 15 }}>
+                {(receiverActions[managerRoomId] || []).map((act, i) => (
+                  <button key={i} onClick={() => sendToManager(act, managerRoomId)} style={{
+                    backgroundColor: "#0f172a", color: "white", border: `1px solid ${color}55`,
+                    padding: "12px 20px", borderRadius: 16, cursor: "pointer", fontWeight: "bold",
+                    fontSize: "1rem"
+                  }}>
+                    {act}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8, backgroundColor: "#0f172a", padding: "8px 12px", borderRadius: 18, border: `1px dashed ${color}55`, alignItems: "center", flexWrap: "wrap" }}>
+                {recordingTargetId === managerRoomId ? (
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, color: "#ef4444", fontWeight: "bold", fontSize: "1.1rem", padding: "5px" }}>
+                    <div style={{ width: 12, height: 12, backgroundColor: "#ef4444", borderRadius: "50%", animation: "pulseDot 1.5s infinite" }} />
+                    جاري التسجيل... {Math.floor(recordingSeconds / 60).toString().padStart(2, "0")}:{(recordingSeconds % 60).toString().padStart(2, "0")}
+                  </div>
+                ) : (
+                  <input type="text" placeholder={`رسالة مخصصة لـ ${managerTitle}...`}
+                    value={customActionMsgs[managerRoomId] || ""}
+                    onChange={e => setCustomActionMsgs(p => ({ ...p, [managerRoomId]: e.target.value }))}
+                    onKeyDown={e => e.key === "Enter" && sendToManager(customActionMsgs[managerRoomId], managerRoomId)}
+                    style={{ flex: 1, backgroundColor: "transparent", border: "none", color: "white", padding: "7px", fontSize: "0.95rem", outline: "none", fontFamily: "inherit", minWidth: 100 }} />
+                )}
+                {recordingTargetId !== managerRoomId && (
+                  <button onClick={() => sendToManager(customActionMsgs[managerRoomId], managerRoomId)} style={{ backgroundColor: color, color: "white", border: "none", borderRadius: 11, padding: "9px 14px", display: "flex", cursor: "pointer", flexShrink: 0 }}>
+                    <Send size={16} />
+                  </button>
+                )}
+                {user?.role !== 'kitchen' && (
+                  <button onClick={() => toggleRecording(managerRoomId)} style={{
+                    backgroundColor: recordingTargetId === managerRoomId ? "#ef4444" : "#475569", color: "white", border: "none",
+                    borderRadius: 11, padding: "9px 14px", display: "flex", cursor: "pointer", transition: "0.2s", flexShrink: 0
+                  }} title="تسجيل بصمة صوتية">
+                    {recordingTargetId === managerRoomId ? <Square size={16} /> : <Mic size={16} />}
+                  </button>
+                )}
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 8, backgroundColor: "#0f172a", padding: "8px 12px", borderRadius: 18, border: `1px dashed ${color}55`, alignItems: "center", flexWrap: "wrap" }}>
-              {isRecording ? (
-                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, color: "#ef4444", fontWeight: "bold", fontSize: "1.1rem", padding: "5px" }}>
-                  <div style={{ width: 12, height: 12, backgroundColor: "#ef4444", borderRadius: "50%", animation: "pulseDot 1.5s infinite" }} />
-                  جاري التسجيل... {Math.floor(recordingSeconds / 60).toString().padStart(2, "0")}:{(recordingSeconds % 60).toString().padStart(2, "0")}
-                </div>
-              ) : (
-                <input type="text" placeholder="رسالة مخصصة للمدير..."
-                  value={customActionMsg}
-                  onChange={e => setCustomActionMsg(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && sendToManager(customActionMsg)}
-                  style={{ flex: 1, backgroundColor: "transparent", border: "none", color: "white", padding: "7px", fontSize: "0.95rem", outline: "none", fontFamily: "inherit", minWidth: 100 }} />
-              )}
-              {!isRecording && (
-                <button onClick={() => sendToManager(customActionMsg)} style={{ backgroundColor: color, color: "white", border: "none", borderRadius: 11, padding: "9px 14px", display: "flex", cursor: "pointer", flexShrink: 0 }}>
-                  <Send size={16} />
-                </button>
-              )}
-              {user?.role !== 'kitchen' && (
-                <button onClick={toggleRecording} style={{
-                  backgroundColor: isRecording ? "#ef4444" : "#475569", color: "white", border: "none",
-                  borderRadius: 11, padding: "9px 14px", display: "flex", cursor: "pointer", transition: "0.2s", flexShrink: 0
-                }} title="تسجيل بصمة صوتية">
-                  {isRecording ? <Square size={16} /> : <Mic size={16} />}
-                </button>
-              )}
-            </div>
-          </div>
+          )}
 
           {/* قائمة الطلبات */}
           <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 18 }}>
@@ -3035,6 +3375,19 @@ function App() {
         if (valid) {
           setUser(getUser());
           requestNotificationPermission(); // طلب إذن الإشعارات
+
+          // جلب الأقسام لتسمية قسم / مديرية
+          try {
+            const res = await fetch(`${window.location.origin}${window.location.pathname.startsWith('/smart_system') ? '/smart_system' : ''}/api/sections`, {
+              headers: { 'Authorization': `Bearer ${getToken()}` }
+            });
+            if (res.ok) {
+              const secs = await res.json();
+              const map = {};
+              secs.forEach(s => map[s.id] = s.title);
+              window.app_sections_cache = map;
+            }
+          } catch { /* ignore */ }
         } else {
           clearAuth();
         }
@@ -3053,22 +3406,23 @@ function App() {
       // إجبار السوكيت على الاستعادة فوراً
       reconnectSocket();
 
-      // فحص العلامة المعلقة (من الإشعارات)
+      // فحص العلامة المعلقة (من الإشعارات) - تحديث بدون إعادة تحميل كاملة للصفحة
       const lastSignal = localStorage.getItem('pending_sync_signal');
       if (lastSignal) {
         const diff = Date.now() - parseInt(lastSignal);
-        if (diff < 60000) { // لو في آخر دقيقة
-          console.log(`[GLOBAL LOG] 🕵️ كشف إشارة طلب معلق (${diff}ms) -> إعادة تحميل قسرية`);
-          localStorage.removeItem('pending_sync_signal');
-          window.location.reload();
+        localStorage.removeItem('pending_sync_signal');
+        if (diff < 60000) {
+          console.log(`[GLOBAL LOG] 🕵️ كشف إشارة طلب معلق (${diff}ms) -> تحديث بيانات فوري`);
+          // تحديث البيانات فقط بدون reload (يمنع ظهور زر تفعيل الصوت من جديد)
+          window.dispatchEvent(new Event('nitro_sync_trigger'));
           return;
         }
-        localStorage.removeItem('pending_sync_signal');
       }
 
-      // إطلاق نبضات تحديث سريعة لجميع التوريدات (يقوم بها المكون النشط لاحقاً)
+      // إطلاق نبضات تحديث سريعة لجميع التوريدات
       window.dispatchEvent(new Event('nitro_sync_trigger'));
     };
+
 
     const handleReappear = () => {
       if (document.visibilityState === 'visible') globalWakeUp();
@@ -3086,15 +3440,16 @@ function App() {
   // Heartbeat لإبقاء الوضع أونلاين وإيقاظ التنبيهات (تم نقل المنطق للـ Gloabl)
   // تم توحيد المنطق في الأعلى لضمان الصمت التام وسرعة الجلب
 
-  // مراقبة انتهاء صلاحية الـ Token تلقائياً
+  // مراقبة انتهاء صلاحية الـ Token أو تلقائياً (كل ١٠ دقائق فقط)
   useEffect(() => {
     if (!user) return;
     const checkExpiry = setInterval(async () => {
       const valid = await verifyToken();
       if (!valid) { clearAuth(); setUser(null); socket.disconnect(); }
-    }, 5 * 60 * 1000); // كل 5 دقائق
+    }, 10 * 60 * 1000); // كل 10 دقائق (server check)
     return () => clearInterval(checkExpiry);
   }, [user]);
+
 
   const handleLogin = (u) => {
     setUser(u);
@@ -3104,7 +3459,8 @@ function App() {
 
   const defaultRoute = (u) => {
     if (!u) return "/login";
-    return { manager: "/", secretary: "/secretary", kitchen: "/kitchen", "office-manager": "/office-manager" }[u.role] || "/login";
+    if (u.role === 'department') return "/department";
+    return { manager: "/", secretary: "/secretary", kitchen: "/kitchen", "office-manager": "/office-manager", "deputy-tech": "/", "deputy-admin": "/", "office-tech": "/office-tech", "office-admin": "/office-admin" }[u.role] || "/login";
   };
 
   if (checking) return (
@@ -3125,7 +3481,7 @@ function App() {
 
         <Route path="/"
           element={<ProtectedRoute user={user}>
-            {user?.role === "manager" ? (
+            {user?.role === "manager" || user?.role?.startsWith("deputy-") ? (
               <Manager user={user} onLogout={handleLogout} isManagerBusy={isManagerBusy} />
             ) : (
               <Navigate to={defaultRoute(user)} replace />
@@ -3144,7 +3500,22 @@ function App() {
 
         <Route path="/office-manager"
           element={<ProtectedRoute allowedRoles={["manager", "office-manager"]} user={user}>
-            <Receiver title="مدير المكتب" roomId={4} icon={<ShieldCheck />} color="#a855f7" user={user} onLogout={handleLogout} isManagerBusy={isManagerBusy} />
+            <Receiver title="إدارة المكتب" roomId={4} icon={<ShieldCheck />} color="#a855f7" user={user} onLogout={handleLogout} isManagerBusy={isManagerBusy} />
+          </ProtectedRoute>} />
+
+        <Route path="/office-tech"
+          element={<ProtectedRoute allowedRoles={["deputy-tech", "office-tech"]} user={user}>
+            <Receiver title="إدارة المكتب الخاص بالمعاون الفني" roomId={6} managerRoomId={5} managerTitle="المعاون الفني" icon={<ShieldCheck />} color="#a855f7" user={user} onLogout={handleLogout} isManagerBusy={isManagerBusy} />
+          </ProtectedRoute>} />
+
+        <Route path="/office-admin"
+          element={<ProtectedRoute allowedRoles={["deputy-admin", "office-admin"]} user={user}>
+            <Receiver title="إدارة المكتب الخاص بالمعاون الإداري" roomId={8} managerRoomId={7} managerTitle="المعاون الإداري" icon={<ShieldCheck />} color="#f43f5e" user={user} onLogout={handleLogout} isManagerBusy={isManagerBusy} />
+          </ProtectedRoute>} />
+
+        <Route path="/department"
+          element={<ProtectedRoute allowedRoles={["department"]} user={user}>
+            <Receiver title={window.app_sections_cache?.[user?.room_id] || "قسم / مديرية"} roomId={user?.room_id} icon={<Briefcase />} color="#0ea5e9" managerRoomId={null} managerTitle="الجهات العليا" user={user} onLogout={handleLogout} isManagerBusy={isManagerBusy} />
           </ProtectedRoute>} />
 
         <Route path="/unauthorized"
