@@ -1,0 +1,13 @@
+{
+  "name": "smart-intercom",
+  "version": "1.0.0",
+  "description": "Smart Intercom System",
+  "scripts": {
+    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "build": "cd frontend && npm install && npm run build && cd ../backend && npm install",
+    "start": "cd backend && node server.js"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
