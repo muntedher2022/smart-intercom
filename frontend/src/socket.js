@@ -5,7 +5,9 @@ import { SERVER_URL } from './auth';
 // إنشاء socket مع إرسال الـ token للمصادقة
 export const createSocket = () => {
     const token = getToken();
-    const isSubdir = window.location.pathname.startsWith('/smart_system');
+    // المسار دائماً /smart_system/socket.io سواء على الاستضافة أو المحلي
+    // لأن البيك-إند مُعد على هذا المسار دائماً
+    const isSubdir = window.location.pathname.startsWith('/smart_system') || window.location.port === '3000' || !window.location.port;
 
     return io(window.location.origin, {
         path: isSubdir ? '/smart_system/socket.io' : '/socket.io',

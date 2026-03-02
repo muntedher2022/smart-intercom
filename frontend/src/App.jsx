@@ -1657,6 +1657,9 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
   // eslint-disable-next-line no-unused-vars
   const [liveStatus, setLiveStatus] = useState({});
 
+  // ردود المدير العام على طلبات المعاون (بطاقات بجانب الصفحة مثل السكرتارية)
+  const [deputyReplies, setDeputyReplies] = useState([]);
+
   // حالة الغرف (متصل/غير متصل)
   const [roomOnline, setRoomOnline] = useState({});
   const [managerIncoming, setManagerIncoming] = useState([]);
@@ -1850,12 +1853,50 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
     socket.on("auth-error", handleAuthError);
 
 
-    // إشعارات واردة للمدير
+    // إشعارات واردة للمدير أو ردود المدير على طلبات المعاونين
     const handleManagerNotification = (data) => {
-      setManagerIncoming(prev => {
-        // إذا كان الطلب موجوداً بالفعل (قد تم جلبه من الـ Fetch) ومكتمل، نتجاهله
-        if (prev.some(x => x.logId === data.logId)) return prev;
+      // ─── طبقة الحماية الأولى: لأي رسالة ردّ للمعاون ───────────────────────
+      // إذا كانت الرسالة ردًا ("الرد على [...]") وكان المستخدم ليس المدير العام
+      // نُوجّهها حتماً لـ deputyReplies ونخرج فوراً - لا تصل أبداً لـ managerIncoming
+      if (user?.role !== 'manager' && data.message && data.message.startsWith('الرد على [')) {
+        // تحقق من أن الرد موجَّه لهذا المعاون (مقارنة آمنة من ناحية الأنواع)
+        const targetRoom = data.toRoomId !== undefined ? parseInt(data.toRoomId) : parseInt(user?.room_id);
+        const myRoom = parseInt(user?.room_id);
+        if (!isNaN(targetRoom) && !isNaN(myRoom) && targetRoom !== myRoom) return;
 
+        const replyMatch = data.message.match(/الرد على \[(.+?)\]: (.+)/);
+        if (replyMatch) {
+          const originalMsg = replyMatch[1];
+          const replyMsg = replyMatch[2].trim();
+          const isApproved = replyMsg.includes('موافق');
+          setDeputyReplies(prev => {
+            if (prev.some(x => x.logId === data.logId)) return prev;
+            return [{
+              id: Date.now(),
+              logId: data.logId,
+              originalMsg,
+              replyMsg,
+              isApproved,
+              time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+            }, ...prev];
+          });
+          if (managerAudioEnabled && audioRef.current) audioRef.current.play().catch(() => { });
+          showNativeNotification(`رد المدير العام: ${replyMsg}`, `على طلب: ${originalMsg}`);
+        }
+        return; // ← دائماً نخرج هنا إذا كان المستخدم معاوناً والرسالة ردّ
+      }
+
+      // ─── طبقة الحماية الثانية: للمدير العام ──────────────────────────────
+      // نتجاهل الردود الموجَّهة للمعاونين (toRoomId = 5 أو 7) لمنع ظهورها عند المدير
+      if (user?.role === 'manager' && data.message?.startsWith('الرد على [') &&
+        data.toRoomId !== undefined && parseInt(data.toRoomId) !== 0) return;
+
+      // ─── طبقة الحماية الثالثة: حارس نهائي ───────────────────────────────
+      // لا ندع أي رسالة رد تصل لـ managerIncoming لغير المدير أبداً
+      if (user?.role !== 'manager' && data.message?.startsWith('الرد على [')) return;
+
+      setManagerIncoming(prev => {
+        if (prev.some(x => x.logId === data.logId)) return prev;
         return [{
           fromRoomId: data.fromRoomId,
           fromName: data.fromName || `غرفة ${data.fromRoomId}`,
@@ -1867,10 +1908,9 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
       });
 
       if (!isManagerBusyRef.current && managerAudioEnabled && audioRef.current) audioRef.current.play().catch(() => { });
-
-      // إشعار نظام أصلي
       showNativeNotification(`طلب جديد من: ${data.fromName || "قسم"}`, data.message);
     };
+
 
     socket.on("receive-manager-notification", handleManagerNotification);
     socket.on("receive-notification", handleManagerNotification);
@@ -1980,9 +2020,12 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
     return () => clearInterval(intervalId);
   }, [todayAgenda, remindersGiven, managerAudioEnabled, loadTodayAgenda]);
 
-  // تكرار تنبيه الصوت للمدير إذا كانت هناك طلبات غير مستجابة
+  // تكرار تنبيه الصوت للمدير/المعاون إذا كانت هناك طلبات غير مستجابة
   useEffect(() => {
-    if (!managerAudioEnabled || managerIncoming.length === 0) return;
+    const hasIncoming = managerIncoming.length > 0;
+    const hasUnreadReplies = deputyReplies.some(r => !r.received);
+
+    if (!managerAudioEnabled || (!hasIncoming && !hasUnreadReplies)) return;
 
     const interval = setInterval(() => {
       if (audioRef.current) {
@@ -1991,7 +2034,7 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
     }, 8000); // تكرار كل 8 ثواني
 
     return () => clearInterval(interval);
-  }, [managerIncoming, managerAudioEnabled]);
+  }, [managerIncoming, deputyReplies, managerAudioEnabled]);
 
   // تحميل الأقسام
   useEffect(() => {
@@ -2032,6 +2075,8 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
     socket.emit("send-notification", {
       toRoomId: targetId, fromName: fromName,
       message: message.trim(), sectionTitle,
+      // fromRoomId ضروري ليعرف المستقبل أين يُرسل الرد
+      fromRoomId: roomId,
     });
     showToast(`تم إرسال: ${message}`, "success");
     setCustomMsgs(p => ({ ...p, [targetId]: "" }));
@@ -2063,8 +2108,10 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
           reader.onloadend = () => {
             const base64Audio = reader.result;
             socket.emit("send-notification", {
-              toRoomId: targetId, fromName: "المدير العام",
-              message: "بصمة صوتية 🎤", sectionTitle, audio: base64Audio
+              toRoomId: targetId,
+              fromName: user?.role === 'manager' ? 'المدير العام' : (user?.role === 'deputy-tech' ? 'معاون المدير الفني' : 'معاون المدير الاداري'),
+              message: "بصمة صوتية 🎤", sectionTitle, audio: base64Audio,
+              fromRoomId: roomId,
             });
             showToast("تم إرسال البصمة الصوتية ✅", "success");
           };
@@ -2092,9 +2139,11 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
 
   const replyToSection = (req, replyMsg) => {
     stopAudio();
-    // محاولة إيجاد القسم من اسمه
+    // استخدام fromRoomId المُرسَل صراحةً أولاً، ثم البحث عن القسم بالاسم كبديل
     const targetSection = sections.find(s => s.title === req.fromName);
     const toRoomId = req.fromRoomId || (targetSection ? targetSection.id : null);
+
+    console.log('[REPLY DEBUG] req:', req, '→ toRoomId:', toRoomId);
 
     if (toRoomId) {
       socket.emit("send-notification", {
@@ -2102,8 +2151,12 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
         fromName: "المدير العام",
         message: `الرد على [${req.message}]: ${replyMsg}`,
         sectionTitle: targetSection ? targetSection.title : "المدير العام",
+        fromRoomId: 0,
       });
       showToast("تم إرسال الرد ✅", "success");
+    } else {
+      console.error('[REPLY DEBUG] لم يتم العثور على toRoomId! req.fromRoomId:', req.fromRoomId, 'req.fromName:', req.fromName);
+      showToast("تعذر الرد: لم يتم التعرف على المُرسِل", "error");
     }
 
     const idToRemove = req.logId || req.id;
@@ -2151,45 +2204,53 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
       <audio ref={audioRef} src={selectedSound} preload="auto" />
 
       {/* إشعارات واردة للمدير (شاشة عريضة لضمان عدم التجاهل) */}
-      {managerIncoming.length > 0 && (
-        <div style={{
-          position: "fixed", inset: 0, backgroundColor: "rgba(15, 23, 42, 0.85)", zIndex: 9999,
-          display: "flex", justifyContent: "center", alignItems: "center", backdropFilter: "blur(5px)",
-          animation: "fadeIn 0.2s ease"
-        }}>
-          <style>{`@keyframes fadeIn{from{opacity:0}to{opacity:1}}`}</style>
-          <div style={{ display: "flex", flexDirection: "column", gap: 20, maxHeight: "90vh", overflowY: "auto", padding: 20 }}>
-            {managerIncoming.map(req => {
-              const reqId = req.logId || req.id;
-              return (
-                <div key={reqId} style={{
-                  backgroundColor: "#1e293b", padding: isMobile ? 20 : 35, borderRadius: isMobile ? 24 : 32, border: "3px solid #f59e0b",
-                  boxShadow: "0 25px 50px -12px rgba(0,0,0,0.8)", width: isMobile ? "94%" : 450, maxWidth: "100%", animation: "scaleIn 0.35s ease", textAlign: "center",
-                  boxSizing: "border-box"
-                }} dir="rtl">
-                  <style>{`@keyframes scaleIn{from{opacity:0;transform:scale(0.9)}to{opacity:1;transform:scale(1)}}`}</style>
-                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 15 }}><Bell size={45} color="#f59e0b" className="pulse-icon" /></div>
-                  <style>{`.pulse-icon { animation: pulse 1.5s infinite; } @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.15); } 100% { transform: scale(1); } }`}</style>
-                  <div style={{ color: "#94a3b8", fontSize: isMobile ? "0.9rem" : "1.1rem", marginBottom: 10 }}>نداء عاجل وارد من: <strong style={{ color: "#3b82f6", fontSize: isMobile ? "1.1rem" : "1.4rem" }}>{req.fromName}</strong></div>
-                  <div style={{ color: "white", fontSize: isMobile ? "1.5rem" : "2.1rem", fontWeight: 900, marginBottom: req.audio ? 15 : 30, lineHeight: 1.4 }}>{req.message}</div>
-                  {req.audio && (
-                    <audio
-                      src={req.audio.startsWith('data:') ? req.audio : `${SERVER_URL}${req.audio}${req.audio.includes('?') ? '&' : '?'}token=${getToken()}`}
-                      controls
-                      style={{ width: "100%", marginBottom: 30 }}
-                    />
-                  )}
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
-                    {!req.isReminder && <button onClick={() => replyToSection(req, "موافق")} style={{ flex: 1, padding: isMobile ? "12px" : "18px", backgroundColor: "#22c55e", color: "white", border: "none", borderRadius: 16, cursor: "pointer", fontWeight: "bold", fontFamily: "inherit", fontSize: isMobile ? "1rem" : "1.2rem", boxShadow: "0 10px 15px -3px rgba(34,197,94,0.4)", minWidth: isMobile ? "90px" : "120px" }}>موافق ✅</button>}
-                    {!req.isReminder && <button onClick={() => replyToSection(req, "ليس بعد")} style={{ flex: 1, padding: isMobile ? "12px" : "18px", backgroundColor: "#ef4444", color: "white", border: "none", borderRadius: 16, cursor: "pointer", fontWeight: "bold", fontFamily: "inherit", fontSize: isMobile ? "1rem" : "1.2rem", boxShadow: "0 10px 15px -3px rgba(239,68,68,0.4)", minWidth: isMobile ? "90px" : "120px" }}>ليس بعد ⏳</button>}
-                    <button onClick={() => dismissManagerNotification(reqId)} style={{ padding: isMobile ? "12px" : "18px", backgroundColor: "#475569", color: "white", border: "none", borderRadius: 16, cursor: "pointer", fontWeight: "bold", fontFamily: "inherit", fontSize: isMobile ? "1rem" : "1.2rem" }} title="تجاهل وإغلاق الإشعار">❌</button>
+      {managerIncoming.filter(req =>
+        // للمعاوين: نخفي ردود المدير من المنبثق (تظهر كبطاقات أسفل الصفحة فقط)
+        !(user?.role !== 'manager' && req.message?.startsWith('الرد على [')) &&
+        !req.isManagerReply
+      ).length > 0 && (
+          <div style={{
+            position: "fixed", inset: 0, backgroundColor: "rgba(15, 23, 42, 0.85)", zIndex: 9999,
+            display: "flex", justifyContent: "center", alignItems: "center", backdropFilter: "blur(5px)",
+            animation: "fadeIn 0.2s ease"
+          }}>
+            <style>{`@keyframes fadeIn{from{opacity:0}to{opacity:1}}`}</style>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20, maxHeight: "90vh", overflowY: "auto", padding: 20 }}>
+              {managerIncoming.map(req => {
+                const reqId = req.logId || req.id;
+                // فلتر 1: لا نعرض isManagerReply في المودال
+                if (req.isManagerReply) return null;
+                // فلتر 2: للمعاونين - لا نعرض ردود المدير في المنبثق (تظهر فقط كبطاقات أسفل الصفحة)
+                if (user?.role !== 'manager' && req.message?.startsWith('الرد على [')) return null;
+                return (
+                  <div key={reqId} style={{
+                    backgroundColor: "#1e293b", padding: isMobile ? 20 : 35, borderRadius: isMobile ? 24 : 32, border: "3px solid #f59e0b",
+                    boxShadow: "0 25px 50px -12px rgba(0,0,0,0.8)", width: isMobile ? "94%" : 450, maxWidth: "100%", animation: "scaleIn 0.35s ease", textAlign: "center",
+                    boxSizing: "border-box"
+                  }} dir="rtl">
+                    <style>{`@keyframes scaleIn{from{opacity:0;transform:scale(0.9)}to{opacity:1;transform:scale(1)}}`}</style>
+                    <div style={{ display: "flex", justifyContent: "center", marginBottom: 15 }}><Bell size={45} color="#f59e0b" className="pulse-icon" /></div>
+                    <style>{`.pulse-icon { animation: pulse 1.5s infinite; } @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.15); } 100% { transform: scale(1); } }`}</style>
+                    <div style={{ color: "#94a3b8", fontSize: isMobile ? "0.9rem" : "1.1rem", marginBottom: 10 }}>نداء عاجل وارد من: <strong style={{ color: "#3b82f6", fontSize: isMobile ? "1.1rem" : "1.4rem" }}>{req.fromName}</strong></div>
+                    <div style={{ color: "white", fontSize: isMobile ? "1.5rem" : "2.1rem", fontWeight: 900, marginBottom: req.audio ? 15 : 30, lineHeight: 1.4 }}>{req.message}</div>
+                    {req.audio && (
+                      <audio
+                        src={req.audio.startsWith('data:') ? req.audio : `${SERVER_URL}${req.audio}${req.audio.includes('?') ? '&' : '?'}token=${getToken()}`}
+                        controls
+                        style={{ width: "100%", marginBottom: 30 }}
+                      />
+                    )}
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+                      {!req.isReminder && <button onClick={() => replyToSection(req, "موافق")} style={{ flex: 1, padding: isMobile ? "12px" : "18px", backgroundColor: "#22c55e", color: "white", border: "none", borderRadius: 16, cursor: "pointer", fontWeight: "bold", fontFamily: "inherit", fontSize: isMobile ? "1rem" : "1.2rem", boxShadow: "0 10px 15px -3px rgba(34,197,94,0.4)", minWidth: isMobile ? "90px" : "120px" }}>موافق ✅</button>}
+                      {!req.isReminder && <button onClick={() => replyToSection(req, "ليس بعد")} style={{ flex: 1, padding: isMobile ? "12px" : "18px", backgroundColor: "#ef4444", color: "white", border: "none", borderRadius: 16, cursor: "pointer", fontWeight: "bold", fontFamily: "inherit", fontSize: isMobile ? "1rem" : "1.2rem", boxShadow: "0 10px 15px -3px rgba(239,68,68,0.4)", minWidth: isMobile ? "90px" : "120px" }}>ليس بعد ⏳</button>}
+                      <button onClick={() => dismissManagerNotification(reqId)} style={{ padding: isMobile ? "12px" : "18px", backgroundColor: "#475569", color: "white", border: "none", borderRadius: 16, cursor: "pointer", fontWeight: "bold", fontFamily: "inherit", fontSize: isMobile ? "1rem" : "1.2rem" }} title="تجاهل وإغلاق الإشعار">❌</button>
+                    </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
       <div style={{ width: "100%", padding: isMobile ? "130px 14px 40px" : "90px 5% 40px", boxSizing: "border-box" }} dir="rtl">
         <CustomToast visible={toast.visible} message={toast.msg} type={toast.type} />
@@ -2522,6 +2583,70 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
             </div>
           </div>
         </div>
+
+        {/* بطاقات ردود المدير للمعاونين - بنفس شكل بطاقات الأقسام الأخرى */}
+        {user?.role !== 'manager' && deputyReplies.length > 0 && (
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 18, marginTop: 28 }} dir="rtl">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <h3 style={{ color: '#94a3b8', fontSize: '1.1rem', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Bell size={18} color="#3b82f6" /> طلباتي للمدير العام
+              </h3>
+              <button onClick={() => setDeputyReplies([])} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '0.8rem' }}>مسح الكل</button>
+            </div>
+            {deputyReplies.map(reply => (
+              <div key={reply.id} style={{
+                backgroundColor: '#1e293b',
+                padding: isMobile ? '22px' : '36px',
+                borderRadius: isMobile ? 26 : 32,
+                display: 'flex', flexDirection: isMobile ? 'column' : 'row',
+                justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center',
+                borderRight: `${isMobile ? 7 : 11}px solid ${reply.isApproved ? '#22c55e' : '#ef4444'}`,
+                boxShadow: '0 12px 35px rgba(0,0,0,0.3)', gap: isMobile ? 20 : 0,
+                animation: 'slideIn 0.35s ease',
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                    <span style={{ fontSize: '0.9rem', color: '#94a3b8' }}>{reply.time}</span>
+                    <StatusBadge status={reply.received ? 'received' : 'pending'} />
+                  </div>
+                  <h2 style={{ fontSize: isMobile ? '1.9rem' : '2.8rem', margin: 0, fontWeight: 900, color: 'white', marginBottom: 8 }}>
+                    الرد على [{reply.originalMsg}]: <span style={{ color: reply.isApproved ? '#22c55e' : '#ef4444' }}>{reply.replyMsg}</span>
+                  </h2>
+                </div>
+                <div style={{ display: 'flex', gap: 13, flexWrap: 'wrap' }}>
+                  {!reply.received && (
+                    <button
+                      onClick={() => {
+                        stopAudio();
+                        setDeputyReplies(prev => prev.map(r => r.id === reply.id ? { ...r, received: true } : r));
+                        if (reply.logId) socket.emit("update-notification-status", { logId: reply.logId, status: "received" });
+                      }}
+                      style={{
+                        backgroundColor: '#3b82f6', color: 'white', padding: '12px 18px', borderRadius: 16,
+                        border: 'none', fontWeight: 'bold', flex: 1, fontSize: '1rem', cursor: 'pointer', fontFamily: 'inherit',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
+                      }}>
+                      <span>استلام</span> <span style={{ fontSize: '1.2rem' }}>✋</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      stopAudio();
+                      setDeputyReplies(prev => prev.filter(r => r.id !== reply.id));
+                      if (reply.logId) socket.emit("update-notification-status", { logId: reply.logId, status: "completed" });
+                    }}
+                    style={{
+                      backgroundColor: '#22c55e', color: 'white', padding: '12px 18px', borderRadius: 16,
+                      border: 'none', fontWeight: 'bold', flex: 1, fontSize: '1rem', cursor: 'pointer', fontFamily: 'inherit',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
+                    }}>
+                    <span>إنجاز</span> <span style={{ fontSize: '1.2rem' }}>✅</span>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
 
         {/* نافذة الإعدادات */}

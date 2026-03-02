@@ -1175,6 +1175,11 @@ io.on('connection', (socket) => {
     socket.join('manager_room');
   }
 
+  // المدير العام فقط ينضم لغرفة خاصة لاستقبال الطلبات الموجهة إليه حصراً
+  if (socket.user.role === 'manager') {
+    socket.join('manager_only');
+  }
+
 
   socket.emit('manager-busy-status', isManagerBusy);
 
@@ -1264,8 +1269,13 @@ io.on('connection', (socket) => {
       const payload = { ...data, message, sectionTitle, fromName, logId, sentAt, audio };
 
       // إرسال للقسم المحدد
+      // toRoomId === 0 → المدير العام حصراً (ليس المعاونين)
+      console.log(`[SEND-NOTIF] from=${socket.user.username}(${socket.user.role}) toRoomId=${data.toRoomId} fromRoomId=${data.fromRoomId} msg="${message}"`);
       if (data.toRoomId === 0) {
-        io.to('manager_room').emit('receive-manager-notification', payload);
+        io.to('manager_only').emit('receive-manager-notification', payload);
+      } else if (data.toRoomId === 5 || data.toRoomId === 7) {
+        // غرف المعاونين - نرسل حدثاً واحداً فقط لغرفتهم الخاصة لمنع التكرار
+        io.to(data.toRoomId).emit('receive-manager-notification', payload);
       } else {
         io.to(data.toRoomId).emit('receive-notification', payload);
       }
@@ -1279,8 +1289,8 @@ io.on('connection', (socket) => {
         toRoomId: data.toRoomId
       });
 
-      // إخبار جميع المدراء بنجاح الإرسال + الـ ID للتتبع لتحديث شعار الـ Loading لديهم جميعاً
-      io.to('manager_room').emit('notification-sent', { logId, message: payload.message });
+      // إخبار المُرسِل فقط بنجاح الإرسال (كل مدير/معاون يرى إشعاراته هو فقط)
+      socket.emit('notification-sent', { logId, message: payload.message });
     } catch (e) {
       console.error('خطأ في إرسال الطلب:', e);
       socket.emit('error', { message: 'حدث خطأ في السيرفر أثناء إرسال الطلب' });
@@ -1299,15 +1309,46 @@ io.on('connection', (socket) => {
       // تحديث في قاعدة البيانات
       await pool.query(`UPDATE notifications_log SET status = ?, ${field} = ? WHERE id = ?`, [status, now, logId]);
 
-      // إخطار المدير بالتحديث
+      let friendlyName = socket.user.username;
+      if (friendlyName === 'deputy-tech') friendlyName = 'معاون المدير الفني';
+      else if (friendlyName === 'deputy-admin') friendlyName = 'المعاون الإداري';
+      else if (friendlyName === 'secretary') friendlyName = 'مكتب السكرتارية';
+      else if (friendlyName === 'office-manager') friendlyName = 'مدير المكتب';
+      else if (friendlyName === 'kitchen') friendlyName = 'خدمات المطبخ';
+
       const statusUpdate = {
         logId,
         status,
         updatedAt: now,
-        sectionTitle: socket.user.username,
+        sectionTitle: friendlyName,
         roomId: socket.user.room_id,
       };
-      io.emit('notification-status-updated', statusUpdate);
+
+      // الإرسال فقط للمرسل الأصلي (وليس لجميع المتصلين)
+      try {
+        const [origRows] = await pool.query('SELECT from_room_id FROM notifications_log WHERE id = ?', [logId]);
+        if (origRows.length > 0) {
+          const fromRoomId = origRows[0].from_room_id;
+          if (fromRoomId === null || fromRoomId === 0) {
+            // المُرسل هو المدير العام → أخبر المدير العام فقط
+            io.to('manager_only').emit('notification-status-updated', statusUpdate);
+          } else {
+            // المُرسل كان قسماً أو معاوناً → أخبر غرفته فقط
+            io.to(fromRoomId).emit('notification-status-updated', statusUpdate);
+          }
+        } else {
+          // احتياطي: إذا لم يُعثر على السجل، أخبر المدير فقط
+          io.to('manager_only').emit('notification-status-updated', statusUpdate);
+        }
+      } catch {
+        io.to('manager_only').emit('notification-status-updated', statusUpdate);
+      }
+
+      // مزامنة أجهزة المستقبل نفسه (إذا كانت له غرفة)
+      if (socket.user.room_id) {
+        io.to(socket.user.room_id).emit('notification-status-updated', statusUpdate);
+      }
+
     } catch (e) {
       console.error('خطأ في تحديث حالة الطلب:', e);
     }
@@ -1416,9 +1457,10 @@ io.on('connection', (socket) => {
       const logId = result.insertId;
       const payload = { ...data, message, fromName, logId, sentAt, audio, toRoomId: targetRoomId };
 
-      // إرسال للمدراء
+      // إرسال للمستهدف فقط
+      // targetRoomId === 0 → المدير العام حصراً (ليس المعاونين)
       if (targetRoomId === 0) {
-        io.to('manager_room').emit('receive-manager-notification', payload);
+        io.to('manager_only').emit('receive-manager-notification', payload);
       } else {
         io.to(targetRoomId).emit('receive-manager-notification', payload);
       }
