@@ -1,0 +1,30 @@
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN
+PassengerAppRoot "/home/appsstore/public_html/smart_system"
+PassengerBaseURI "/smart_system"
+PassengerNodejs "/home/appsstore/nodevenv/public_html/smart_system/18/bin/node"
+PassengerAppType node
+PassengerStartupFile server.js
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END
+# --- توجيه أخطاء الخادم إلى الصفحة المخصصة ---
+ErrorDocument 403 /smart_system/error.html
+ErrorDocument 404 /smart_system/error.html
+ErrorDocument 500 /smart_system/error.html
+ErrorDocument 503 /smart_system/error.html
+
+# --- كود حماية الملفات الحساسة فقط ---
+
+# 1. منع تصفح المجلدات (إخفاء شجرة الملفات)
+Options -Indexes
+
+# 2. منع الوصول المباشر لملفات بيئة العمل والباك إند فقط
+<FilesMatch "^(server\.js|\.env|package\.json|package-lock\.json)$">
+    <IfModule mod_authz_core.c>
+        # استضافة حديثة (Apache 2.4+)
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        # استضافة قديمة
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>

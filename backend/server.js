@@ -169,7 +169,10 @@ app.use(['/uploads/docs/*', '/uploads/audio/*'], (req, res, next) => {
   // السماح بالوصول فقط إذا تم التحقق من الهوية
   authenticateToken(req, res, next);
 }, (req, res) => {
-  const filePath = path.join(__dirname, req.url.replace('/smart_system', ''));
+  // استخدام req.path بدلاً من req.url حتى لا يتم تضمين Query String (?token=...) في اسم الملف
+  const safePath = req.path.replace('/smart_system', '');
+  const filePath = path.join(__dirname, safePath);
+  
   if (fs.existsSync(filePath)) {
     res.sendFile(filePath);
   } else {

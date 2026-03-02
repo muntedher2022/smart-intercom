@@ -2196,7 +2196,7 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
     <FullScreenWrapper>
       <TopBar user={user} onLogout={onLogout} onChangePassword={() => setShowCP(true)} connected={effectiveConnected} />
       {showChangePass && <ChangePasswordModal onClose={() => setShowCP(false)} onSuccess={m => showToast(m, "success")} />}
-      {showLogs && <LogsPanel onClose={() => setShowLogs(false)} initialTab={showLogs === "stats" ? "stats" : "logs"} />}
+      {showLogs && <LogsPanel onClose={() => setShowLogs(false)} roomId={user?.role !== 'manager' ? user?.room_id : null} initialTab={showLogs === "stats" ? "stats" : "logs"} />}
       {showAgenda && <AgendaPanel user={user} onClose={() => setShowAgenda(false)} />}
       {showSystemPanel && <SystemPanel onClose={() => setShowSystemPanel(false)} />}
       {showFiles && <FilesPanel user={user} onClose={() => setShowFiles(false)} showToast={showToast} />}
@@ -2291,40 +2291,31 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
           </div>
         )}
 
-        <header style={{ marginBottom: 40, textAlign: "center" }}>
+        {user?.role === "manager" ? (
+          <>
+            <header style={{ marginBottom: 40, textAlign: "center" }}>
+              <h1 style={{ fontSize: "calc(1.6rem + 1.2vw)", fontWeight: 900, margin: "0 0 12px", color: "#ffffff" }}>
+                نظام النداء والخدمات المركزية
+              </h1>
+            </header>
 
-          <h1 style={{ fontSize: "calc(1.6rem + 1.2vw)", fontWeight: 900, margin: "0 0 12px", color: "#ffffff" }}>
-            نظام النداء والخدمات المركزية
-          </h1>
-          {/* مؤشرات حالة الغرف تم إخفاؤها */}
-        </header>
-
-
-        {/* أزرار أدوات أعلى الشاشة لتفادي التداخل */}
-        <div style={{ display: "flex", justifyContent: "center", gap: isMobile ? 8 : 12, zIndex: 50, flexWrap: "wrap", marginBottom: 30, backgroundColor: "#1e293b", padding: "15px", borderRadius: 20, border: "1px solid #334155" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 15px", borderRadius: 12, backgroundColor: effectiveConnected ? "#14532d33" : "#450a0a33", border: `1px solid ${effectiveConnected ? "#22c55e" : "#ef4444"}` }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: effectiveConnected ? "#22c55e" : "#ef4444", boxShadow: effectiveConnected ? "0 0 8px #22c55e" : "none" }}></span>
-            <span style={{ fontSize: "0.85rem", color: effectiveConnected ? "#86efac" : "#fca5a5", fontWeight: "bold" }}>{effectiveConnected ? "النظام متصل" : "جاري إعادة الاتصال..."}</span>
-          </div>
-          {user?.role === "manager" && (
-            <button
-              onClick={() => socket.emit("set-manager-busy", !isManagerBusy)}
-              title={isManagerBusy ? "مشغول (في اجتماع)" : "متاح"}
-              style={{ background: isManagerBusy ? "#ef4444" : "#22c55e", border: "1px solid transparent", padding: "11px 16px", borderRadius: 14, cursor: "pointer", color: "white", display: "flex", alignItems: "center", gap: 6, fontWeight: "bold", fontFamily: "inherit" }}>
-              {isManagerBusy ? "🔕 مشغول" : "🔔 متاح"}
-            </button>
-          )}
-
-          <button onClick={() => setShowSettings(true)} title="إعدادات" style={{ background: "#0f172a", border: "1px solid #3b82f6", padding: 11, borderRadius: 14, cursor: "pointer", color: "white", display: "flex", alignItems: "center", gap: 5 }}>
-            <Settings size={22} color="#3b82f6" /> {isMobile ? "" : "إعدادات"}
-          </button>
-          {user?.role === "manager" && (
-            <button onClick={() => setShowAgenda(true)} title="جدول الأعمال" style={{ background: "#2e1065", border: "1px solid #a855f7", padding: 11, borderRadius: 14, cursor: "pointer", color: "#d8b4fe", display: "flex", alignItems: "center", gap: 5 }}>
-              <Calendar size={22} /> {isMobile ? "" : "الجدول"}
-            </button>
-          )}
-          {user?.role === "manager" && (
-            <>
+            <div style={{ display: "flex", justifyContent: "center", gap: isMobile ? 8 : 12, zIndex: 50, flexWrap: "wrap", marginBottom: 30, backgroundColor: "#1e293b", padding: "15px", borderRadius: 20, border: "1px solid #334155" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 15px", borderRadius: 12, backgroundColor: effectiveConnected ? "#14532d33" : "#450a0a33", border: `1px solid ${effectiveConnected ? "#22c55e" : "#ef4444"}` }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: effectiveConnected ? "#22c55e" : "#ef4444", boxShadow: effectiveConnected ? "0 0 8px #22c55e" : "none" }}></span>
+                <span style={{ fontSize: "0.85rem", color: effectiveConnected ? "#86efac" : "#fca5a5", fontWeight: "bold" }}>{effectiveConnected ? "النظام متصل" : "جاري إعادة الاتصال..."}</span>
+              </div>
+              <button
+                onClick={() => socket.emit("set-manager-busy", !isManagerBusy)}
+                title={isManagerBusy ? "مشغول (في اجتماع)" : "متاح"}
+                style={{ background: isManagerBusy ? "#ef4444" : "#22c55e", border: "1px solid transparent", padding: "11px 16px", borderRadius: 14, cursor: "pointer", color: "white", display: "flex", alignItems: "center", gap: 6, fontWeight: "bold", fontFamily: "inherit" }}>
+                {isManagerBusy ? "🔕 مشغول" : "🔔 متاح"}
+              </button>
+              <button onClick={() => setShowSettings(true)} title="إعدادات" style={{ background: "#0f172a", border: "1px solid #3b82f6", padding: 11, borderRadius: 14, cursor: "pointer", color: "white", display: "flex", alignItems: "center", gap: 5 }}>
+                <Settings size={22} color="#3b82f6" /> {isMobile ? "" : "إعدادات"}
+              </button>
+              <button onClick={() => setShowAgenda(true)} title="جدول الأعمال" style={{ background: "#2e1065", border: "1px solid #a855f7", padding: 11, borderRadius: 14, cursor: "pointer", color: "#d8b4fe", display: "flex", alignItems: "center", gap: 5 }}>
+                <Calendar size={22} /> {isMobile ? "" : "الجدول"}
+              </button>
               <button onClick={() => setShowLogs("logs")} title="سجل الطلبات" style={{ background: "#1e3a8a", border: "1px solid #3b82f6", padding: 11, borderRadius: 14, cursor: "pointer", color: "#bfdbfe", display: "flex", alignItems: "center", gap: 5 }}>
                 <History size={22} /> {isMobile ? "" : "السجل"}
               </button>
@@ -2337,9 +2328,39 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
               <button onClick={() => setShowSystemPanel(true)} title="النظام" style={{ background: "#0f172a", border: "1px solid #10b981", padding: 11, borderRadius: 14, cursor: "pointer", color: "#10b981", display: "flex", alignItems: "center", gap: 5 }}>
                 <Database size={22} /> {isMobile ? "" : "النظام"}
               </button>
-            </>
-          )}
-        </div>
+            </div>
+          </>
+        ) : (
+          <header style={{
+            width: "100%", backgroundColor: "#1e293b", padding: isMobile ? "18px" : "26px",
+            borderRadius: isMobile ? 22 : 28, display: "flex", justifyContent: "space-between",
+            alignItems: "center", marginBottom: 26, border: "1px solid #334155", boxSizing: "border-box", flexWrap: "wrap", gap: 15
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 13, flex: 1, flexWrap: "wrap" }}>
+              <div style={{ color: user?.role === 'deputy-tech' ? '#0ea5e9' : '#f43f5e', display: "flex" }}>
+                <Briefcase size={isMobile ? 32 : 46} />
+              </div>
+              <h1 style={{ fontSize: isMobile ? "1.35rem" : "2.3rem", margin: 0, color: "white" }}>
+                {user?.role === 'deputy-tech' ? 'معاون المدير العام للشؤون الفنية' : 'معاون المدير العام للشؤون الادارية والمالية'}
+              </h1>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 15 }}>
+              <button onClick={() => setShowSettings(true)} style={{ background: "#0f172a", color: "#bfdbfe", border: "1px solid #3b82f6", padding: "10px 16px", borderRadius: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, fontWeight: "bold", fontFamily: "inherit" }}>
+                <Settings size={20} />
+                <span style={{ display: isMobile ? "none" : "inline" }}>تخصيص الأزرار</span>
+              </button>
+              <button onClick={() => setShowLogs("logs")} style={{ background: "#1e3a8a", color: "#bfdbfe", border: "1px solid #3b82f6", padding: "10px 16px", borderRadius: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, fontWeight: "bold", fontFamily: "inherit" }}>
+                <History size={20} />
+                <span style={{ display: isMobile ? "none" : "inline" }}>سجل الطلبات</span>
+              </button>
+
+              <div style={{ fontSize: isMobile ? "1rem" : "1.7rem", fontWeight: "bold", color: "#3b82f6" }}>
+                {new Date().toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit", hour12: true })}
+              </div>
+            </div>
+          </header>
+        )}
 
         {/* الأقسام الأساسية (السكرتارية، المكتب، المطبخ) - للمدير فقط */}
         {user?.role === 'manager' && (
@@ -2655,15 +2676,17 @@ const Manager = ({ user, onLogout, isManagerBusy }) => {
             <div style={{ backgroundColor: "#1e293b", width: "100%", maxWidth: 1000, borderRadius: 28, padding: 30, border: "1px solid #334155" }}>
 
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-                <h2 style={{ color: "white", margin: 0 }}>تخصيص الإعدادات</h2>
+                <h2 style={{ color: "white", margin: 0 }}>
+                  تخصيص الإعدادات - {user?.role === 'manager' ? 'المدير العام' : (user?.role === 'deputy-tech' ? 'معاون المدير العام للشؤون الفنية' : 'معاون المدير العام للشؤون الإدارية والمالية')}
+                </h2>
                 <X onClick={() => setShowSettings(false)} style={{ cursor: "pointer", color: "#94a3b8" }} />
               </div>
 
-              {/* تخصيص النغمة للمدير */}
+              {/* تخصيص النغمة */}
               <div style={{ marginBottom: 30, padding: 20, border: "1px solid #334155", borderRadius: 20, backgroundColor: "#0f172a" }}>
                 <h3 style={{ color: "white", marginTop: 0, marginBottom: 18, display: "flex", alignItems: "center", gap: 10 }}>
                   <Volume2 size={24} color="#3b82f6" />
-                  نغمة الإشعارات (للمدير العام)
+                  نغمة الإشعارات ({user?.role === 'manager' ? 'للمدير العام' : 'للمعاون'})
                 </h3>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12 }}>
                   {APP_SOUNDS.map(s => (
